@@ -274,19 +274,29 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
                                                or r.endswith(".cmake"))])
 
     # ---------------------------------------------------------------- project-level link checks
+    uses = {}
     for rid, (names, lib) in kb.LINK_CHECKS.items():
         hits = [(n, used_calls[n][0]) for n in names if used_calls.get(n)]
-        if not hits:
+        uses[lib] = bool(hits)
+        if not hits or not build_texts:
             continue
-        if kb.build_links(lib, link_blob) or not build_texts:
+        explicit = kb.build_links(lib, link_blob, explicit_only=True)
+        searched = kb.build_links(lib, link_blob)
+        if explicit:
             continue
         name, (rel, line, st) = hits[0]
         rule = kb.RULES_BY_ID[rid]
-        findings.append(Finding(rid, rule.severity, rel, line,
-                                f"uses {', '.join(n + '()' for n, _ in hits[:4])} but the build never links "
-                                f"{lib}",
+        if searched:
+            msg = (f"uses {', '.join(n + '()' for n, _ in hits[:4])}; the build only searches for lib{lib} - QNX "
+                   f"ports link -l{lib} explicitly even then")
+            conf = "medium"
+        else:
+            msg = f"uses {', '.join(n + '()' for n, _ in hits[:4])} but the build never links {lib}"
+            conf = "high" if st is True else "medium"
+        findings.append(Finding(rid, rule.severity, rel, line, msg,
                                 sources[rel].split("\n")[line - 1].strip()[:160] if rel in sources else "",
-                                "high" if st is True else "medium", name, rules_c.is_test_path(rel)))
+                                conf, name, rules_c.is_test_path(rel)))
+    result.uses = uses
 
     # functions QNX declares in a different header than Linux does
     all_includes = set()

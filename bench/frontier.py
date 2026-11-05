@@ -186,12 +186,29 @@ def main():
           flush=True)
     if a.limit:
         unblocked = unblocked[:a.limit]
-    results = []
-    with cf.ProcessPoolExecutor(max_workers=a.jobs) as ex:
-        futs = [ex.submit(scan_candidate, c, a.cache, a.max_mb) for c in unblocked]
-        for i, fut in enumerate(cf.as_completed(futs), 1):
-            r = fut.result()
+    partial = os.path.join(a.out, "partial.jsonl")
+    results, done = [], set()
+    if os.path.exists(partial):
+        for line in open(partial):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
             results.append(r)
+            done.add(r["package"])
+    todo = [c for c in unblocked if c["package"] not in done]
+    with cf.ProcessPoolExecutor(max_workers=a.jobs) as ex, open(partial, "a") as pf:
+        futs = {ex.submit(scan_candidate, c, a.cache, a.max_mb): c for c in todo}
+        for i, fut in enumerate(cf.as_completed(futs), len(done) + 1):
+            try:
+                r = fut.result()
+            except Exception as e:  # pragma: no cover
+                c = futs[fut]
+                r = {k: c[k] for k in ("package", "alpine_repo", "version", "url", "description")}
+                r["status"] = f"error: {e}"
+            results.append(r)
+            pf.write(json.dumps(r, default=str) + "\n")
+            pf.flush()
             sc = r.get("score") or {}
             print(f"[{i}/{len(unblocked)}] {r['package']:30s} {r['status']:26s} {sc.get('grade', '-')} "
                   f"{sc.get('points', '')}", flush=True)

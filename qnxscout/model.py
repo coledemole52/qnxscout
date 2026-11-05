@@ -36,3 +36,4 @@ class ScanResult:
     score: Optional[dict] = None
     duration_s: float = 0.0
     sdp: Optional[str] = None
+    uses: dict = field(default_factory=dict)          # library -> project calls its API

@@ -525,14 +525,16 @@ RULES: list[Rule] = [
       ["apkbuild:core/flex/APKBUILD", "apkbuild:extra/fftw/APKBUILD", "port:core/binutils/0008.patch"],
       effort="trivial"),
     R("QNX080", "Sockets live in libsocket", "link", "build",
-      "QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but the build never "
-      "links socket, so linking fails with undefined socket()/connect()/getaddrinfo() (exiv2, gcr, valkey ports).",
-      "Add -lsocket on QNX (or AC_SEARCH_LIBS([socket], [socket]) / check_library_exists).",
+      "QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but the build does not link "
+      "socket explicitly, so linking can fail with undefined socket()/connect()/getaddrinfo(). QNX's recipes add "
+      "-lsocket even for projects whose configure searches for it (bash, python3, glib, dbus, exiv2, valkey).",
+      "Link -lsocket on QNX (QNX recipes pass it through LDFLAGS, e.g. LDFLAGS=\"$LDFLAGS -lsocket\").",
       ["skill:facts", "port:extra/exiv2/003-add-socket-linker-flags.patch",
-       "port:extra/gcr/set-_XOPEN_SOURCE-a-vlaue-and-link-libsocket.patch"], effort="trivial"),
+       "port:extra/gcr/set-_XOPEN_SOURCE-a-vlaue-and-link-libsocket.patch", "apkbuild:extra/glib/APKBUILD",
+       "apkbuild:core/python3/APKBUILD"], effort="trivial"),
     R("QNX081", "POSIX regex lives in libregex", "link", "build",
       "QNX keeps regcomp()/regexec() in libregex, not libc (QNX 8.0 C Library Reference).",
-      "Add -lregex on QNX.",
+      "Link -lregex on QNX (QNX recipes pass it through LDFLAGS).",
       ["libref:regcomp", "skill:facts"], effort="trivial"),
     R("QNX082", "crypt() lives in liblogin", "link", "build",
       "QNX provides crypt() in liblogin.",
@@ -560,14 +562,20 @@ LINK_CHECKS = {
 }
 
 
-def build_links(lib: str, blob: str) -> bool:
-    """Does the build text link (or search for) library ``lib``?"""
+def build_links(lib: str, blob: str, explicit_only: bool = False) -> bool:
+    """Does the build text link library ``lib``?
+
+    explicit_only: only count unconditional link items (-lsocket, target_link_libraries(... socket));
+    otherwise configure-style searches (AC_SEARCH_LIBS, find_library, check_library_exists) count too.
+    """
     L = re.escape(lib)
-    rx = (r"-l\s*" + L + r"\b|['\"]" + L + r"['\"]|\blib" + L + r"\b(?![./])"
-          r"|AC_(?:SEARCH|CHECK)_LIBS?\(\s*\[?\w+\]?\s*,\s*\[?[^)]*\b" + L + r"\b"
-          r"|(?:target_)?link_libraries\([^)]*\b" + L + r"\b(?![./_])"
-          r"|find_library\([^)]*\b" + L + r"\b|check_library_exists\(\s*" + L + r"\b"
-          r"|find_library\(\s*'" + L + r"'")
+    explicit = (r"-l\s*" + L + r"\b|(?:target_)?link_libraries\([^)]*\b" + L + r"\b(?![./_])"
+                r"|list\(\s*APPEND\s+\w*(?:LIB|LINK)\w*[^)]*\b" + L + r"\b(?![./_])")
+    searched = (r"|['\"]" + L + r"['\"]|\blib" + L + r"\b(?![./])"
+                r"|AC_(?:SEARCH|CHECK)_LIBS?\(\s*\[?\w+\]?\s*,\s*\[?[^)]*\b" + L + r"\b"
+                r"|find_library\([^)]*\b" + L + r"\b|check_library_exists\(\s*" + L + r"\b"
+                r"|find_library\(\s*'" + L + r"'")
+    rx = explicit if explicit_only else explicit + searched
     return re.search(rx, blob, re.I) is not None
 
 # ----------------------------------------------------------------------------- target model

@@ -154,6 +154,8 @@ def _vocab() -> dict:
 
 
 VOCAB = _vocab()
+LIB_RULE = {"socket": "QNX080", "regex": "QNX081", "epoll": "QNX001", "eventfd": "QNX002", "timerfd": "QNX003",
+            "signalfd": "QNX004", "fsnotify": "QNX005", "memstream": "QNX006", "login": "QNX082"}
 SOURCE_PATCH_EXT = re.compile(r"\.(c|h|cc|cpp|cxx|hpp|hh|hxx|inl|ipp|c\+\+|in|txt|cmake|build|ac|am|mk|m4)$|"
                               r"(^|/)(Makefile|CMakeLists\.txt|meson\.build|configure|config\.sub)$")
 
@@ -232,7 +234,10 @@ def ground_truth(pkgdir: str, env: dict) -> dict:
                      ("timerfd", "QNX003"), ("signalfd", "QNX004"), ("fsnotify", "QNX005"),
                      ("memstream", "QNX006"), ("login", "QNX082")):
         if re.search(r"-l" + lib + r"\b", build_part):
+            # Many QNX recipes add "-lm -lregex -lsocket" as boilerplate; it only counts as a real
+            # porting issue if the source uses that library (checked after scanning).
             add(rid, f"APKBUILD links -l{lib}")
+            gt.setdefault("_link_libs", []).append(lib)
     if re.search(r"\bupdate_config_sub\b|\bupdate_config_guess\b", text):
         add("QNX079", "APKBUILD update_config_sub")
     if re.search(r"CMAKE_C_STANDARD=(99|11|17)|-std=(gnu|c)(99|11|17)", build_part):
@@ -304,7 +309,10 @@ def extract(archive: str, dest: str) -> str | None:
     return os.path.join(dest, entries[0]) if len(entries) == 1 and os.path.isdir(os.path.join(dest, entries[0])) else dest
 
 
-MAX_REPO_KB = 150 * 1024
+HUGE_REPOS = re.compile(r"(?i)^(llvm-project|gcc|binutils-gdb|linux|webkit|chromium|v8|qt\w*|gecko\w*|firefox|"
+                        r"libreoffice\w*|boost|opencv|tensorflow|pytorch|onnxruntime|godot|mame|blender|ros2|"
+                        r"node|electron|swift|rust|go|ghc|openjdk\w*|jdk\w*|mesa|ffmpeg|gtk|glib|emacs|vim|neovim|"
+                        r"bazel|protobuf|grpc|abseil-cpp|xnnpack|mediapipe|jax|llama\.cpp|whisper\.cpp|ncnn)$")
 KEEP_SOURCES = os.environ.get("QNXSCOUT_BENCH_KEEP", "") == "1"
 MAX_C_FILES = 5000
 GH_ARCHIVE = re.compile(r"https://github\.com/([^/]+)/([^/]+?)/+archive/(?:refs/tags/)?(.+?)(?:/[^/]+)?\.(?:tar\.gz|tgz|zip|tar\.bz2|tar\.xz)$")
@@ -318,20 +326,13 @@ def git_fallback(url: str, dest: str):
     if os.path.isdir(dest) and os.listdir(dest):
         return dest
     owner, repo, ref = m.group(1), m.group(2), m.group(3)
-    try:
-        with urllib.request.urlopen(urllib.request.Request(
-                f"https://api.github.com/repos/{owner}/{repo}", headers={"User-Agent": "qnxscout-bench"}),
-                timeout=30) as r:
-            size_kb = json.load(r).get("size", 0)
-        if size_kb > MAX_REPO_KB:
-            return None
-    except Exception:
+    if HUGE_REPOS.search(repo):
         return None
     for cand in (ref, ref.split("/")[0]):
         try:
-            subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", cand,
+            subprocess.run(["git", "clone", "-q", "--depth", "1", "--filter=blob:limit=4m", "--branch", cand,
                             f"https://github.com/{owner}/{repo}.git", dest],
-                           check=True, timeout=300, capture_output=True)
+                           check=True, timeout=240, capture_output=True)
             shutil.rmtree(os.path.join(dest, ".git"), ignore_errors=True)
             return dest
         except Exception:
@@ -397,6 +398,13 @@ def evaluate_package(pkgdir: str, cache: str, max_mb: int) -> dict:
         shutil.rmtree(os.path.join(cache, "git", name), ignore_errors=True)
         if os.path.exists(arch_path):
             os.unlink(arch_path)
+    uses = getattr(r, "uses", {})
+    for lib in gt.pop("_link_libs", []):
+        rid = LIB_RULE[lib]
+        if not uses.get(lib):
+            gt.pop(rid, None)
+            res.setdefault("boilerplate_link_flags", []).append(lib)
+    res["ground_truth"] = gt
     pred = {}
     pred_files = set()
     for f in r.findings:
@@ -486,21 +494,39 @@ def main():
         want = set(a.packages.split(","))
         dirs = [d for d in dirs if os.path.basename(d) in want]
     if a.only_ground_truth:
-        dirs = [d for d in dirs if ground_truth(d, parse_apkbuild(os.path.join(d, "APKBUILD")))]
+        dirs = [d for d in dirs if {k for k in ground_truth(d, parse_apkbuild(os.path.join(d, "APKBUILD")))
+                                    if not k.startswith("_")}]
     if a.limit:
         dirs = dirs[:a.limit]
+    os.makedirs(a.out, exist_ok=True)
+    partial = os.path.join(a.out, "partial.jsonl")
     results = []
-    with cf.ProcessPoolExecutor(max_workers=a.jobs) as ex:
-        futs = {ex.submit(evaluate_package, d, a.cache, a.max_mb): d for d in dirs}
-        for i, fut in enumerate(cf.as_completed(futs), 1):
-            r = fut.result()
+    done = set()
+    if os.path.exists(partial):
+        for line in open(partial):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
             results.append(r)
+            done.add(r["package"])
+    todo = [d for d in dirs if os.path.basename(d) not in done]
+    print(f"resuming: {len(done)} done, {len(todo)} to go", flush=True)
+    with cf.ProcessPoolExecutor(max_workers=a.jobs) as ex, open(partial, "a") as pf:
+        futs = {ex.submit(evaluate_package, d, a.cache, a.max_mb): d for d in todo}
+        for i, fut in enumerate(cf.as_completed(futs), len(done) + 1):
+            try:
+                r = fut.result()
+            except Exception as e:  # pragma: no cover
+                r = {"package": os.path.basename(futs[fut]), "status": f"error: {e}", "ground_truth": {}}
+            results.append(r)
+            pf.write(json.dumps(r, default=str) + "\n")
+            pf.flush()
             gt = set(r["ground_truth"])
             pr = set(r.get("predicted", {}))
             print(f"[{i}/{len(dirs)}] {r['package']:28s} {r['status']:28s} gt={sorted(gt)} hit={sorted(gt & pr)}",
                   flush=True)
     results.sort(key=lambda r: r["package"])
-    os.makedirs(a.out, exist_ok=True)
     summary = summarize(results)
     with open(os.path.join(a.out, "results.json"), "w") as fh:
         json.dump({"summary": summary, "packages": results}, fh, indent=1, default=str)
