@@ -46,6 +46,11 @@ PLATFORM_TOKENS = {
     "aix": "aix", "hpux": "hpux", "emscripten": "emscripten", "wasm": "wasm", "wasi": "wasm",
     "fuchsia": "fuchsia", "hurd": "hurd", "beos": "haiku", "os2": "os2", "vms": "vms", "zos": "zos",
     "qnx": "qnx", "nto": "qnx", "posix": "posix", "unix": "unix",
+    "vxworks": "vxworks", "zephyr": "zephyr", "freertos": "freertos", "rtems": "rtems", "nuttx": "nuttx",
+    "threadx": "threadx", "esp32": "esp32", "espidf": "esp32", "arduino": "arduino", "mbed": "mbed",
+    "riot": "riot", "contiki": "contiki", "tizen": "tizen", "wince": "windows", "uwp": "windows",
+    "xbox": "console", "ps4": "console", "ps5": "console", "psp": "console", "vita": "console",
+    "nds": "console", "3ds": "console", "wii": "console",
 }
 _PLAT_SPLIT = re.compile(r"[-_./]")
 
@@ -269,6 +274,7 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
     reachable: list = []          # build text QNX actually evaluates (CMake/Meson); others verbatim
     for rel, txt in build_texts.items():
         base = rel.rsplit("/", 1)[-1]
+        start = len(findings)
         try:
             if base == "CMakeLists.txt" or base.endswith(".cmake"):
                 systems.add("cmake")
@@ -293,6 +299,13 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
                 systems.add("python")
         except RecursionError:
             continue
+        plat = platform_of_path(rel)
+        test = rules_c.is_test_path(rel)
+        for f in findings[start:]:
+            f.in_tests = f.in_tests or test
+            if plat and plat not in ("linux", "qnx", "posix", "unix") and f.severity != "info":
+                f.note = f"{rel} is specific to {plat} (was {f.severity})"
+                f.severity = "info"
     result.build_systems = sorted(systems)
     link_blob = "\n".join(reachable + [t for r, t in build_texts.items()
                                        if not (r.rsplit("/", 1)[-1] in ("CMakeLists.txt", "meson.build")

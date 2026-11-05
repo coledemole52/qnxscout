@@ -646,7 +646,8 @@ def _make_cond(line: str):
     if not m:
         return None
     a, b = m.group(2), m.group(3)
-    osish = re.compile(r"uname|\bOS\b|_OS\b|^\$\(OS\)|SYSTEM|PLATFORM|TARGET_OS|HOST_OS|KERNEL", re.I)
+    osish = re.compile(r"uname|\bOS(?:TYPE|_?NAME)?\b|_OS\b|^\$\(OS\)|SYSTEM|PLATFORM|TARGET_OS|HOST_OS|KERNEL|"
+                       r"\bSYS\b|DETECTED_OS", re.I)
     lit = None
     if osish.search(a) and not osish.search(b):
         lit = b

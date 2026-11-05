@@ -46,7 +46,8 @@ LINUX_MACROS = {"__linux__", "__linux", "linux", "__gnu_linux__", "__ANDROID__",
 UNIX_FLAVOURS = LINUX_MACROS | {"__APPLE__", "__MACH__", "__FreeBSD__", "__NetBSD__", "__OpenBSD__",
                                 "__DragonFly__", "__sun", "__sun__", "_AIX", "__HAIKU__", "__unix__", "__unix"}
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|testing|unittests?|testsuite|t|check|checks|spec|fuzz|fuzzing|"
-                          r"benchmarks?|bench)(/|$)|(^|/)test_[^/]*$|_tests?\.[ch](pp|c|xx)?$|_unittest\.",
+                          r"benchmarks?|bench|examples?|samples?|demos?|attic|deprecated|contrib|docs?|"
+                          r"tutorials?)(/|$)|(^|/)test_[^/]*$|_tests?\.[ch](pp|c|xx)?$|_unittest\.",
                           re.I)
 ELEM_SIZE = {"char": 1, "uint8_t": 1, "int8_t": 1, "u8": 1, "s8": 1, "byte": 1, "BYTE": 1, "u_char": 1,
              "bool": 1, "_Bool": 1, "guchar": 1, "gchar": 1, "jbyte": 1, "UChar": 2, "char16_t": 2,

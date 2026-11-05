@@ -76,7 +76,7 @@ def render(result, max_rows: int = 40) -> str:
         rows = []
         for f in sorted(fs, key=lambda f: (f.confidence != "high", f.in_tests, f.file, f.line))[:max_rows]:
             cond = '<span class="cond">conditional</span>' if f.confidence != "high" else ""
-            test = '<span class="cond">test</span>' if f.in_tests else ""
+            test = '<span class="cond">test/example</span>' if f.in_tests else ""
             note = f'<div class="sub">{_e(f.note)}</div>' if f.note else ""
             rows.append(f'<tr><td class="loc mono">{_e(f.file)}:{f.line}{cond}{test}</td>'
                         f'<td>{_e(f.message)}{note}</td><td class="snip mono">{_e(f.snippet)}</td></tr>')

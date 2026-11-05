@@ -48,7 +48,7 @@ def render(result, color: bool = None, max_per_rule: int = 6, show_info: bool = 
         out.append(f"    fix: {rule.fix}")
         for f in sorted(fs, key=lambda f: (f.confidence != "high", f.in_tests, f.file, f.line))[:max_per_rule]:
             tag = "" if f.confidence == "high" else " (conditional)"
-            tag += " [test]" if f.in_tests else ""
+            tag += " [test/example]" if f.in_tests else ""
             out.append(f"    - {f.file}:{f.line}: {f.message}{tag}")
         if len(fs) > max_per_rule:
             out.append(f"    ... and {len(fs) - max_per_rule} more")
