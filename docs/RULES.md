@@ -591,6 +591,20 @@ QNX implements forkpty()/openpty()/login_tty() in libc but declares them in <uni
 - [QNX 8.0 C Library Reference: openpty()](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/o/openpty.html)
 - [QNX port patch (neovim): qnx-forkpty.patch](https://github.com/qnx-ports/aports/blob/main/extra/neovim/qnx-forkpty.patch)
 
+## QNX048: SocketCAN: use QNX's io-sock SocketCAN
+
+**Severity:** `link` · **Category:** header · **Typical effort:** small
+
+QNX implements Linux SocketCAN (AF_CAN, CAN_RAW) as an io-sock module. Its can-utils port builds can-utils with no source changes, only a few thunk headers (linux/can.h, linux/sockios.h, linux/types.h, ...) that map to QNX's definitions. CAN_BCM is not supported. The project is marked Experimental by QNX.
+
+**Fix:** Build against github.com/qnx/socketcan: add its apps/can-utils/include directory to the include path and load the SocketCAN io-sock module on the target.
+
+**Detects:** `<linux/can\.h>`, `<linux/can/.+>`
+
+**Evidence:**
+
+- [QNX compatibility library: qnx/socketcan](https://github.com/qnx/socketcan)
+
 ## QNX043: Linux kernel headers are not available
 
 **Severity:** `blocker` · **Category:** header · **Typical effort:** medium
@@ -964,15 +978,17 @@ Old autotools helper scripts may reject or mis-parse the QNX 8 host triplet (nto
 
 **Severity:** `link` · **Category:** build · **Typical effort:** trivial
 
-QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but the build never links socket, so linking fails with undefined socket()/connect()/getaddrinfo() (exiv2, gcr, valkey ports).
+QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but the build does not link socket explicitly, so linking can fail with undefined socket()/connect()/getaddrinfo(). QNX's recipes add -lsocket even for projects whose configure searches for it (bash, python3, glib, dbus, exiv2, valkey).
 
-**Fix:** Add -lsocket on QNX (or AC_SEARCH_LIBS([socket], [socket]) / check_library_exists).
+**Fix:** Link -lsocket on QNX (QNX recipes pass it through LDFLAGS, e.g. LDFLAGS="$LDFLAGS -lsocket").
 
 **Evidence:**
 
 - [QNX agent skills: qnx-platform-facts](https://github.com/qnx/qnx-agent-skills/blob/main/skills/qnx-platform-facts/SKILL.md)
 - [QNX port patch (exiv2): 003-add-socket-linker-flags.patch](https://github.com/qnx-ports/aports/blob/main/extra/exiv2/003-add-socket-linker-flags.patch)
 - [QNX port patch (gcr): set-_XOPEN_SOURCE-a-vlaue-and-link-libsocket.patch](https://github.com/qnx-ports/aports/blob/main/extra/gcr/set-_XOPEN_SOURCE-a-vlaue-and-link-libsocket.patch)
+- [QNX port recipe (glib)](https://github.com/qnx-ports/aports/blob/main/extra/glib/APKBUILD)
+- [QNX port recipe (python3)](https://github.com/qnx-ports/aports/blob/main/core/python3/APKBUILD)
 
 ## QNX081: POSIX regex lives in libregex
 
@@ -980,7 +996,7 @@ QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but t
 
 QNX keeps regcomp()/regexec() in libregex, not libc (QNX 8.0 C Library Reference).
 
-**Fix:** Add -lregex on QNX.
+**Fix:** Link -lregex on QNX (QNX recipes pass it through LDFLAGS).
 
 **Evidence:**
 
