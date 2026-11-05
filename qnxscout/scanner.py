@@ -61,6 +61,19 @@ def platform_of_path(rel: str) -> Optional[str]:
     return None
 
 
+GENERIC_TOKENS = r"(?:unknown|generic|posix|unix|default|other|none|stub|dummy|common)"
+
+
+def has_generic_sibling(rel: str, files: list) -> bool:
+    """osdep-linux.c next to osdep-unknown.c / ngx_linux_config.h next to ngx_posix_config.h."""
+    d, base = (rel.rsplit("/", 1) if "/" in rel else ("", rel))
+    m = re.match(r"^(.*?)(?<![A-Za-z0-9])linux(?![A-Za-z0-9])(.*)$", base, re.I)
+    if not m:
+        return False
+    rx = re.compile(re.escape(m.group(1)) + GENERIC_TOKENS + re.escape(m.group(2)), re.I)
+    return any((f.rsplit("/", 1)[0] if "/" in f else "") == d and rx.fullmatch(f.rsplit("/", 1)[-1]) for f in files)
+
+
 def per_os_families(files: list) -> list:
     """Find families like osdep-linux.c / osdep-freebsd.c that lack a QNX member."""
     fams = defaultdict(dict)
@@ -205,9 +218,12 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
                 proj.provided.setdefault(name, f"{rel}:{line}")
         if not proj.calls_fork and re.search(r"(?<![\w$.>])(fork|daemon)\s*\(", lx.code):
             proj.calls_fork = True
+        if not proj.uses_can and re.search(r"\b(AF_CAN|PF_CAN)\b", lx.code):
+            proj.uses_can = True
 
     # ---------------------------------------------------------------- pass 2: rules
     findings: list = []
+    all_files = list(lexed)
     used_calls = defaultdict(list)     # api name -> first (rel, line, state)
     for idx, (rel, lx) in enumerate(lexed.items()):
         pp = pps[rel]
@@ -219,6 +235,12 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
                 if f.severity != "info":
                     f.note = f"{rel} is specific to {plat}; the QNX build normally does not compile it " \
                              f"(was {f.severity})"
+                    f.severity = "info"
+        elif plat == "linux" and has_generic_sibling(rel, all_files):
+            for f in file_findings:
+                if f.severity != "info":
+                    f.note = f"{rel} is Linux-specific and has a generic/POSIX sibling the build can select " \
+                             f"for QNX (was {f.severity})"
                     f.severity = "info"
         elif plat == "linux":
             for f in file_findings:

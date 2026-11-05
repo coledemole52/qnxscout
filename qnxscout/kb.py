@@ -364,6 +364,14 @@ RULES: list[Rule] = [
       "#ifdef __QNX__ / #include <unix.h> (the neovim port does exactly this).",
       ["libref:forkpty", "libref:openpty", "port:extra/neovim/qnx-forkpty.patch"],
       headers=["pty.h", "util.h", "libutil.h"], effort="trivial", guards=["HAVE_PTY_H", "HAVE_UTIL_H", "HAVE_LIBUTIL_H"]),
+    R("QNX048", "SocketCAN: use QNX's io-sock SocketCAN", "link", "header",
+      "QNX implements Linux SocketCAN (AF_CAN, CAN_RAW) as an io-sock module. Its can-utils port builds "
+      "can-utils with no source changes, only a few thunk headers (linux/can.h, linux/sockios.h, "
+      "linux/types.h, ...) that map to QNX's definitions. CAN_BCM is not supported. The project is marked "
+      "Experimental by QNX.",
+      "Build against github.com/qnx/socketcan: add its apps/can-utils/include directory to the include path and "
+      "load the SocketCAN io-sock module on the target.",
+      ["repo:qnx/socketcan"], headers=[r"linux/can\.h", r"linux/can/.+"], link="qnx/socketcan", effort="small"),
     R("QNX043", "Linux kernel headers are not available", "blocker", "header",
       "<linux/...> and <asm/...> are Linux kernel UAPI headers; nothing equivalent exists on QNX.",
       "Isolate the Linux-only feature behind #ifdef __linux__ and provide a QNX (or generic POSIX) path.",
@@ -625,9 +633,12 @@ process.h sys/neutrino.h hw/inout.h sys/syspage.h sys/procmgr.h libgen.h stdbool
 """.split())
 
 
+SOCKETCAN_THUNKS = {"linux/socket.h", "linux/sockios.h", "linux/types.h", "linux/stddef.h"}
+
+
 def _rule_header_patterns():
     pats = []
-    for r in RULES:
+    for r in sorted(RULES, key=lambda r: r.id != "QNX048"):
         for h in r.headers:
             if h.endswith("__never"):
                 continue

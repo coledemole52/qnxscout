@@ -634,11 +634,56 @@ def analyze_autoconf(rel: str, text: str) -> list:
     return out
 
 
+OS_NAMES = {"linux": False, "darwin": False, "freebsd": False, "netbsd": False, "openbsd": False,
+            "sunos": False, "aix": False, "haiku": False, "cygwin": False, "mingw": False, "windows_nt": False,
+            "windows": False, "gnu": False, "android": False, "qnx": True, "nto": True}
+
+
+def _make_cond(line: str):
+    """Evaluate ifeq/ifneq on uname-style OS tests: True/False/None."""
+    m = re.match(r"^\s*(ifeq|ifneq)\s*\(\s*([^,]*?)\s*,\s*([^)]*?)\s*\)", line) or \
+        re.match(r"^\s*(ifeq|ifneq)\s+[\"']([^\"']*)[\"']\s+[\"']([^\"']*)[\"']", line)
+    if not m:
+        return None
+    a, b = m.group(2), m.group(3)
+    osish = re.compile(r"uname|\bOS\b|_OS\b|^\$\(OS\)|SYSTEM|PLATFORM|TARGET_OS|HOST_OS|KERNEL", re.I)
+    lit = None
+    if osish.search(a) and not osish.search(b):
+        lit = b
+    elif osish.search(b) and not osish.search(a):
+        lit = a
+    if lit is None:
+        return None
+    key = lit.strip().lower()
+    if key not in OS_NAMES:
+        return None
+    eq = OS_NAMES[key]
+    return eq if m.group(1) == "ifeq" else (not eq)
+
+
 def analyze_makefile(rel: str, text: str) -> list:
     out = []
+    stack: list = []
     for i, line in enumerate(text.split("\n"), 1):
         s = line.strip()
         if s.startswith("#"):
+            continue
+        if re.match(r"^(ifeq|ifneq|ifdef|ifndef)\b", s):
+            stack.append(_make_cond(s) if s.startswith(("ifeq", "ifneq")) else None)
+            continue
+        if re.match(r"^else\b", s) and stack:
+            rest = s[4:].strip()
+            prev = stack[-1]
+            if rest.startswith(("ifeq", "ifneq")):
+                c = _make_cond(rest)
+                stack[-1] = False if prev is True else (c if prev is False else (False if c is False else None))
+            else:
+                stack[-1] = None if prev is None else (not prev)
+            continue
+        if s.startswith("endif") and stack:
+            stack.pop()
+            continue
+        if any(c is False for c in stack):
             continue
         for lm in re.finditer(r"(?<![\w-])-l(pthread|dl|util|rt)\b", line):
             rid = {"pthread": "QNX070", "dl": "QNX071", "util": "QNX072", "rt": "QNX073"}[lm.group(1)]

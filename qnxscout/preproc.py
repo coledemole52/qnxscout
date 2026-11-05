@@ -88,6 +88,7 @@ class PPResult:
     guard_macro: Optional[str]
 
 
+_PREFIXED_HAVE = re.compile(r"^[A-Z][A-Z0-9]*_+HAVE_([A-Z0-9_]+)$")
 _INT_RE = re.compile(r"^\(?\s*(-?)(0[xX][0-9A-Fa-f]+|\d+)[uUlL]*\s*\)?$")
 
 
@@ -123,6 +124,10 @@ class MacroEnv:
         if name in kb.TARGET_UNDEFINED or name in self.arch_undef:
             return ("undef", None)
         fact = kb.HAVE_FACTS.get(name)
+        if fact is None:
+            m = _PREFIXED_HAVE.match(name)
+            if m:
+                fact = kb.HAVE_FACTS.get("HAVE_" + m.group(1))
         if fact == "def":
             return ("def", 1)
         if fact == "undef":

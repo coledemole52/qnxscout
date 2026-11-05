@@ -80,6 +80,7 @@ class ProjectIndex:
     calls_fork: bool = False
     build_text: str = ""
     defines_qnx_source: bool = False
+    uses_can: bool = False
     stack_threshold: int = 256 * 1024
 
     def has_file(self, include: str, from_rel: str) -> bool:
@@ -215,6 +216,8 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
         if known is not False:
             continue
         rule = next(r for pat, r in kb.HEADER_RULES if pat.match(inc.header))
+        if proj.uses_can and inc.header in kb.SOCKETCAN_THUNKS:
+            rule = kb.RULES_BY_ID["QNX048"]
         hdr_macro = "HAVE_" + re.sub(r"[^A-Za-z0-9]", "_", inc.header).upper()
         hits = sorted(n for n in inc.guards if n == hdr_macro or n in rule.guards or
                       any("*" in g and re.fullmatch(g, n) for g in rule.guards))
@@ -248,7 +251,8 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
         names_by_branch = [b.names for b in branches]
         has_else = any(b.kind == "else" for b in branches)
         linux_branch = next((b for b in branches if b.kind != "else" and b.names & LINUX_MACROS), None)
-        if (linux_branch and not has_else and all(b.taken is False for b in branches)
+        plat_branches = [b for b in branches if b.kind != "else" and any(kb.PLATFORM_MACRO_RE.match(n) for n in b.names)]
+        if (linux_branch and len(plat_branches) >= 2 and not has_else and all(b.taken is False for b in branches)
                 and not any("__QNX__" in n or "QNX" in n for ns in names_by_branch for n in ns)):
             body = [ln for ln in range(linux_branch.line + 1, (linux_branch.end_line or linux_branch.line) + 1)
                     if 0 < ln <= len(lx.lines) and lx.lines[ln - 1].strip()]
