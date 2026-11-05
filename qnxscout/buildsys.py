@@ -298,7 +298,7 @@ def _rel_finding(rule_id, rel, line, message, state=True, severity="", snippet="
                    "high" if state is True else "medium", symbol)
 
 
-def analyze_cmake(rel: str, text: str) -> list:
+def analyze_cmake(rel: str, text: str, reachable: list = None) -> list:
     cmds = _tokenize_cmake(text)
     ev = CMakeEval()
     out: list = []
@@ -361,6 +361,8 @@ def analyze_cmake(rel: str, text: str) -> list:
         st = state()
         if st is False:
             continue
+        if reachable is not None:
+            reachable.append(c.raw)
         joined = " ".join(t for t, _ in argtoks)
         if name == "set" and argtoks and argtoks[0][0] not in CMAKE_KNOWN and not fn_depth:
             var = argtoks[0][0]
@@ -486,10 +488,11 @@ def _meson_expr(text: str, vars_: dict):
     return None
 
 
-def analyze_meson(rel: str, text: str) -> list:
+def analyze_meson(rel: str, text: str, reachable: list = None) -> list:
     out: list = []
     lines = text.split("\n")
     vars_: dict = {}
+    plat_vars: set = set()
     stack: list = []
 
     def state() -> Tri:
@@ -521,8 +524,8 @@ def analyze_meson(rel: str, text: str) -> list:
         if m:
             v = _meson_expr(m.group(2), vars_)
             v = v if isinstance(v, bool) else None
-            plat = "qnx" in re.sub(r"\bhost_machine\s*\.\s*system\s*\(\s*\)", "'qnx'", m.group(2)) or \
-                any(k in m.group(2) for k in ("system()", "host_system", "host_os"))
+            names = set(re.findall(r"[A-Za-z_]\w*", m.group(2)))
+            plat = "system()" in m.group(2) or bool(names & plat_vars)
             if m.group(1) == "if":
                 stack.append({"branch": v, "taken": v is True, "maybe": v is None, "plat": plat,
                               "has_qnx": "'qnx'" in m.group(2)})
@@ -549,6 +552,8 @@ def analyze_meson(rel: str, text: str) -> list:
         st = state()
         if st is False:
             continue
+        if reachable is not None:
+            reachable.append(code)
         am = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", code)
         if am and not stack:
             v = _meson_expr(am.group(2), vars_)
@@ -556,6 +561,8 @@ def analyze_meson(rel: str, text: str) -> list:
                 vars_[am.group(1)] = v
             else:
                 vars_.pop(am.group(1), None)
+            if "system()" in am.group(2) or set(re.findall(r"[A-Za-z_]\w*", am.group(2))) & plat_vars:
+                plat_vars.add(am.group(1))
         if re.match(r"^error\s*\(", code) and any(fr["plat"] for fr in stack) and st is True:
             out.append(_rel_finding("QNX076", rel, ln, "error() is reached for QNX: " + code[:100], True,
                                     snippet=lines[ln - 1].strip()))
@@ -593,10 +600,10 @@ def analyze_config_sub(rel: str, text: str) -> list:
     year = int(m.group(1)) if m else None
     if not re.search(r"nto-qnx|qnx", text):
         return [_rel_finding("QNX079", rel, 1, "config.sub has no QNX support at all", True, "blocker")]
-    if year is not None and year < 2018:
+    if year is not None and year < 2021:
         line = text[:m.start()].count("\n") + 1
-        return [_rel_finding("QNX079", rel, line, f"config.sub is from {year}; refresh it for the QNX 8 "
-                             "nto-qnx8.0.0 triplet", None)]
+        return [_rel_finding("QNX079", rel, line, f"config.sub is from {year}; QNX ports refresh "
+                             "helper scripts this old", None)]
     return []
 
 

@@ -55,7 +55,7 @@ ELEM_SIZE = {"char": 1, "uint8_t": 1, "int8_t": 1, "u8": 1, "s8": 1, "byte": 1, 
              "long": 8, "size_t": 8, "ssize_t": 8, "uint64_t": 8, "int64_t": 8, "u64": 8, "double": 8,
              "uintptr_t": 8, "intptr_t": 8, "off_t": 8, "time_t": 8, "void": 8}
 ARRAY_DECL_RE = re.compile(
-    r"(?:^|[;{}]\s*)(?:(?:const|volatile|register|unsigned|signed|alignas\s*\([^)]*\)|__attribute__\s*\(\([^)]*\)\))\s+)*"
+    r"(?:^\s*|[;{}]\s*)(?:(?:const|volatile|register|unsigned|signed|alignas\s*\([^)]*\)|__attribute__\s*\(\([^)]*\)\))\s+)*"
     r"([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\[\s*([^\[\];=]{1,80}?)\s*\]\s*(?:\[\s*([^\[\];=]{1,40}?)\s*\])?\s*(?:=|;)")
 AT_FUNCS = r"(?:openat|openat64|fstatat|fstatat64|unlinkat|mkdirat|readlinkat|renameat|faccessat|fchmodat|" \
            r"fchownat|utimensat|linkat|symlinkat|mkfifoat|mknodat|scandirat)"
@@ -305,10 +305,15 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
             var = m.group(1).split(".")[-1].split("->")[-1]
             args = " ".join(lx.lines[i - 1:i + 2])[m.end():][:300]
             args = args[:args.find(";")] if ";" in args else args
-            if re.search(r"O_DIRECTORY|O_SEARCH|O_PATH", args):
-                continue
             window = "\n".join(lx.lines[i:i + 60])
             v = re.escape(var)
+            if re.search(r"O_DIRECTORY", args):
+                if re.search(r"(?<![\w$])f(?:data)?sync\s*\(\s*" + v + r"\s*\)", window):
+                    add("QNX050", i, f"'{var}' is opened with O_DIRECTORY and then fsync()ed; fsync() on a "
+                        f"directory descriptor fails on QNX", "O_DIRECTORY", pp.line_state[i])
+                continue
+            if re.search(r"O_SEARCH|O_PATH", args):
+                continue
             if (re.search(r"(?<![\w$])(?:fdopendir|fchdir)\s*\(\s*" + v + r"\b", window)
                     or re.search(r"(?<![\w$])" + AT_FUNCS + r"\s*\(\s*" + v + r"\s*,", window)
                     or re.search(r"(?<![\w$])\w*(?:Dir|dir|DIR)\w*\s*\(\s*(?:\w+\s*\()?\s*" + v + r"\s*\)", window)):

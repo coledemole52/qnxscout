@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qnxscout"
+version = "0.1.0"
+description = "Find what breaks before you port C/C++ software to QNX 8.0: a static port-readiness scanner backed by QNX's own ports."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+keywords = ["qnx", "porting", "static-analysis", "embedded", "rtos", "sarif"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C",
+  "Programming Language :: C++",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Embedded Systems",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.scripts]
+qnxscout = "qnxscout.cli:main"
+
+[tool.setuptools]
+packages = ["qnxscout", "qnxscout.report", "qnxscout.data"]
+
+[tool.setuptools.package-data]
+"qnxscout.data" = ["*.json"]

@@ -1,0 +1,19 @@
+# Drop this into .github/workflows/ of a C/C++ project to see QNX 8.0 porting issues
+# in the Security > Code scanning tab and in each run's summary.
+name: qnx-readiness
+on: [push, pull_request]
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  qnxscout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: OWNER/qnxscout@v0.1.0        # replace OWNER with the GitHub account hosting qnxscout
+        with:
+          path: .
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: qnxscout.sarif
+          category: qnxscout

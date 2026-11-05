@@ -241,15 +241,16 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
 
     # ---------------------------------------------------------------- build systems
     systems = set()
+    reachable: list = []          # build text QNX actually evaluates (CMake/Meson); others verbatim
     for rel, txt in build_texts.items():
         base = rel.rsplit("/", 1)[-1]
         try:
             if base == "CMakeLists.txt" or base.endswith(".cmake"):
                 systems.add("cmake")
-                findings.extend(buildsys.analyze_cmake(rel, txt))
+                findings.extend(buildsys.analyze_cmake(rel, txt, reachable))
             elif base in ("meson.build",):
                 systems.add("meson")
-                findings.extend(buildsys.analyze_meson(rel, txt))
+                findings.extend(buildsys.analyze_meson(rel, txt, reachable))
             elif base == "config.sub":
                 findings.extend(buildsys.analyze_config_sub(rel, txt))
             elif base in ("configure.ac", "configure.in") or base.endswith(".m4") and "/" not in rel:
@@ -268,13 +269,16 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
         except RecursionError:
             continue
     result.build_systems = sorted(systems)
+    link_blob = "\n".join(reachable + [t for r, t in build_texts.items()
+                                       if not (r.rsplit("/", 1)[-1] in ("CMakeLists.txt", "meson.build")
+                                               or r.endswith(".cmake"))])
 
     # ---------------------------------------------------------------- project-level link checks
     for rid, (names, lib) in kb.LINK_CHECKS.items():
         hits = [(n, used_calls[n][0]) for n in names if used_calls.get(n)]
         if not hits:
             continue
-        if kb.build_links(lib, build_blob) or not build_texts:
+        if kb.build_links(lib, link_blob) or not build_texts:
             continue
         name, (rel, line, st) = hits[0]
         rule = kb.RULES_BY_ID[rid]
