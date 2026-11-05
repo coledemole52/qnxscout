@@ -1,7 +1,7 @@
 # Devpost submission: qnxscout
 
-Paste each section into the matching Devpost field. Placeholders in `{{...}}` are filled from
-`bench/results/SUMMARY.md` before submitting.
+Paste each section into the matching Devpost field. All numbers come from `bench/results/` (filled in by
+`bench/finalize.py`). Replace OWNER with your GitHub username (`scripts/set-owner.sh` does it).
 
 ---
 
@@ -63,7 +63,7 @@ qnxscout is pure Python with no dependencies, so it installs anywhere QNX develo
 * Ground truth: **211** distinct issues QNX engineers fixed in **135** packages.
 * **Recall: 74%.** qnxscout predicted that share of them from the pristine source alone, before anyone built anything. With location credit (it flagged the file QNX patched) the figure is **78%**.
 * The effort score separates packages that needed QNX fixes from those that built unchanged with **AUC 0.777**.
-* Worked example: for tmux 3.7c qnxscout predicts every change in QNX's port, namely `SA_RESTART`, `IOV_MAX`, `<unix.h>` for `forkpty`, `-lregex`, and the `config.sub` refresh. It correctly stays quiet about FreeBSD-only files and about socket linking, which tmux's configure already handles.
+* Worked example: for tmux 3.7c qnxscout predicts every change in QNX's port, namely `SA_RESTART`, `IOV_MAX`, `<unix.h>` for `forkpty`, `-lregex`, `-lsocket`, and the `config.sub` refresh. It correctly stays quiet about the FreeBSD-, Haiku- and AIX-only files that QNX never compiles.
 
 ### Challenges we ran into
 
