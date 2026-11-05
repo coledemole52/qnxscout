@@ -189,7 +189,7 @@ def main():
         "report_png": report_png, "explain": explain, "rules": len(kb.RULES),
         "recall": f"{round(100 * bench['recall'])}%", "gt": bench["ground_truth_issues"],
         "scanned": bench["packages_scanned"], "auc": bench.get("auc_effort_score") or "n/a", "bars": bars,
-        "frontier_top": top, "unblocked": fr["unblocked"], "unported": fr["unported_candidates"],
+        "frontier_top": top, "unblocked": f"{fr['unblocked']:,}", "unported": f"{fr['unported_candidates']:,}",
     }
     pages = scenes(data)
     js = os.path.join(work, "shot.js")

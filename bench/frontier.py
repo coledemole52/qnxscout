@@ -40,7 +40,7 @@ BASE = {"musl", "musl-dev", "linux-headers", "build-base", "busybox", "abuild", 
         "alpine-base", "apk-tools", "ca-certificates-bundle", "utmps-dev", "utmps", "skalibs"}
 NOT_C_PREFIX = ("py3-", "perl-", "ruby-", "go-", "rust-", "font-", "ttf-", "R-", "php", "nodejs-",
                 "openjdk", "dotnet", "ghc", "texlive", "lua-", "postgresql", "kde", "plasma", "gnome-",
-                "xfce4-", "linux-", "firmware")
+                "xfce4-", "linux-", "firmware", "mingw-w64", "wine")
 
 
 def load_index(cache: str) -> dict:
@@ -86,6 +86,18 @@ def candidates(qnx_aports: str, alpine: str, pkgs: dict) -> list:
     ported = set()
     for repo in ("core", "extra"):
         ported.update(os.listdir(os.path.join(qnx_aports, repo)))
+    # Alpine and QNX name a few things differently.
+    for name in list(ported):
+        if name.startswith("python3-"):
+            ported.add("py3-" + name[len("python3-"):])
+    if "ninja" in ported:
+        ported.add("samurai")
+    for name in list(ported):
+        if name.startswith("qt6-"):
+            ported.add("qt6-qt" + name[len("qt6-"):])
+    for qnx_name, alpine_name in (("gtk3", "gtk+3.0"), ("gtk4", "gtk4.0"), ("gtk-layer-shell", "gtk4-layer-shell")):
+        if qnx_name in ported:
+            ported.add(alpine_name)
     resolve = build_resolver(pkgs)
     by_origin = {}
     for name, rec in pkgs.items():

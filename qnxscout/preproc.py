@@ -96,7 +96,16 @@ def parse_int(text: str):
     m = _INT_RE.match(text.strip())
     if not m:
         return None
-    v = int(m.group(2), 0) if m.group(2).lower().startswith("0x") else int(m.group(2), 8 if m.group(2).startswith("0") and len(m.group(2)) > 1 else 10)
+    digits = m.group(2)
+    try:
+        if digits.lower().startswith("0x"):
+            v = int(digits, 16)
+        elif digits.startswith("0") and len(digits) > 1:
+            v = int(digits, 8)
+        else:
+            v = int(digits)
+    except ValueError:          # e.g. "09": not a valid octal literal
+        return None
     return -v if m.group(1) else v
 
 

@@ -83,23 +83,27 @@ You will see a report like this (abridged):
 
 ```
 qnxscout: QNX 8.0 port-readiness report for tmux-3.7c
-  scanned 200 C/C++ files and 5 build files (autotools) in 2.9s
+  scanned 200 C/C++ files and 5 build files (autotools) in 3.4s
 
-  Grade D: Significant porting work  (effort points 47.5, 8 distinct issues)
+  Grade D: Significant porting work  (effort points 49.0, 9 distinct issues, ~8 files to touch)
 
 [BLOCKER] QNX030 SA_RESTART is not defined on QNX  (4 hits in 2 files)
     - client.c:561: SA_RESTART is used
-    - proc.c:250: SA_RESTART is used
 [BLOCKER] QNX031 IOV_MAX is not defined on QNX  (4 hits in 1 file)
     - compat/imsg-buffer.c:727: IOV_MAX is used
 [BLOCKER] QNX042 forkpty/openpty live in <unix.h> on QNX  (1 hit in 1 file)
     - compat/fdforkpty.c:33: forkpty() is called, but no file includes <unix.h>, where QNX declares it
-[RUNTIME] QNX046 flock() is in <fcntl.h> and does not survive fork() on QNX
+[RUNTIME] QNX046 flock() is in <fcntl.h> and does not survive fork() on QNX  (1 hit in 1 file)
     - client.c:89: flock() lock in a program that also forks
-[LINK] QNX081 POSIX regex lives in libregex
+[LINK] QNX080 Sockets live in libsocket  (1 hit in 1 file)
+    - client.c:122: uses socket(), connect(), bind(), listen(); the build only searches for libsocket - QNX ports link -lsocket explicitly even then (conditional)
+[LINK] QNX081 POSIX regex lives in libregex  (1 hit in 1 file)
     - format.c:4513: uses regcomp(), regexec(), regfree() but the build never links regex
-[REVIEW] QNX079 Stale config.sub/config.guess
-    - etc/config.sub:5: config.sub is from 2017; QNX ports refresh helper scripts this old
+[REVIEW] QNX063 Per-OS source files have no QNX variant  (1 hit in 1 file)
+    - osdep-aix.c:1: osdep-*.c exists for aix, cygwin, darwin, ... but not QNX; generic fallback: osdep-unknown.c (conditional)
+[REVIEW] QNX079 Stale config.sub/config.guess  (1 hit in 1 file)
+    - etc/config.sub:5: config.sub is from 2017; QNX ports refresh helper scripts this old (conditional)
+(abridged: each finding also prints why, fix and evidence links)
 ```
 
 For a shareable report, write HTML instead:
@@ -125,11 +129,12 @@ For tmux the findings map to concrete work:
 | QNX030 `SA_RESTART` | QNX does not define it; five QNX ports add a fallback | `#define SA_RESTART 0` when undefined |
 | QNX031 `IOV_MAX` | Not defined on QNX | use `UIO_MAXIOV` from `<sys/uio.h>` |
 | QNX042 `forkpty()` | Implemented in QNX libc, but declared in `<unix.h>` | include `<unix.h>` on QNX |
+| QNX080 `socket()` | BSD sockets are in `libsocket`; tmux's configure searches for it, but QNX recipes link it explicitly | link `-lsocket` |
 | QNX081 `regcomp()` | POSIX regex is in `libregex`, not libc | link `-lregex` |
 | QNX079 `config.sub` | 2017 helper script | refresh it (`update_config_sub`) |
 | QNX046 `flock()` | QNX drops a parent's `flock()` across `fork()` | review: tmux's server lock file |
 
-Notice what is *not* reported. tmux's `osdep-freebsd.c` includes FreeBSD-only headers, but qnxscout knows that file is only compiled on FreeBSD. It instead tells you (QNX063) that tmux picks `osdep-*.c` per OS and will fall back to `osdep-unknown.c` on QNX. Socket linking is not reported either, because tmux's `configure.ac` already searches for `socket()` with `AC_SEARCH_LIBS`.
+Notice what is *not* reported. tmux's `osdep-freebsd.c` includes FreeBSD-only headers, but qnxscout knows that file is only compiled on FreeBSD. It instead tells you (QNX063) that tmux picks `osdep-*.c` per OS and will fall back to `osdep-unknown.c` on QNX. The socket finding is marked *conditional* because tmux's `configure.ac` does search for `socket()`. qnxscout still reports it because QNX's own recipes link `-lsocket` explicitly even then.
 
 ---
 
@@ -180,7 +185,7 @@ This is the same change QNX engineers made in `extra/tmux/qnx-compat.patch`, whi
 
 Two findings are not source changes:
 
-* **QNX081 (`-lregex`)**: add the library to the build flags.
+* **QNX080 and QNX081 (`-lsocket`, `-lregex`)**: add the libraries to the build flags.
 * **QNX079 (`config.sub`)**: refresh the autotools helper scripts in `prepare()`.
 
 In `APKBUILD`:
@@ -201,7 +206,7 @@ build() {
 }
 ```
 
-QNX's own tmux recipe also passes `-lsocket` explicitly, which is a belt-and-braces addition next to tmux's `AC_SEARCH_LIBS`.
+This matches QNX's own tmux recipe.
 
 Update checksums:
 

@@ -35,7 +35,8 @@ def values(bench: dict, frontier: dict) -> dict:
         f"| ... counting the right file as a hit | {s['location_hits']} ({s['recall_with_location']:.0%}) |",
         f"| Effort score: needed QNX fixes vs. built unchanged (AUC) | {s['auc_effort_score']} |",
     ])
-    frontier_summary = (f"Of **{frontier['unported_candidates']}** Alpine packages not yet ported, **{frontier['unblocked']}** "
+    frontier_summary = (f"Of **{frontier['unported_candidates']:,}** Alpine packages with C/C++-style builds that QNX has not "
+                        f"ported yet, **{frontier['unblocked']:,}** "
                         f"have every dependency already on QNX. qnxscout scanned {len(res)} of them with C/C++ code: "
                         f"**{easy}** are predicted to be grade A or B (build as-is, or link flags and a few defines).")
     return {

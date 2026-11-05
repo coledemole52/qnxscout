@@ -32,6 +32,9 @@ def bench_md(path: str) -> str:
          f"| Predicted, counting the right file as a hit | {s['location_hits']} ({s['recall_with_location']:.0%}) |",
          f"| Effort-score AUC: needed QNX fixes vs. built unchanged | {s['auc_effort_score']} |", "",
          "Not scanned: " + ", ".join(f"{k} ({v})" for k, v in s["status_counts"].items() if k != "ok") + ".", "",
+         f"Notes: {s['note']}" if s.get("note") else "", "",
+         "Ground truth is a conservative lower bound: some QNX recipe flags are redundant (libuv already links "
+         "`socket` in its upstream QNX branch), and a fix QNX made centrally (one compat header) counts once.", "",
          "## Per-rule recall", "", "| Rule | Issue | QNX fixed | Predicted | Recall | Packages flagged |",
          "|---|---|---|---|---|---|"]
     for rid, r in sorted(s["per_rule"].items(), key=lambda kv: (-kv[1]["gt"], kv[0])):
@@ -83,7 +86,7 @@ def frontier_md(path: str, top: int = 150) -> str:
         L.append(f"| {i} | [{r['package']}]({r.get('url') or ''}) | {r['score']['grade']} | {r['score']['points']} | "
                  f"{r.get('c_files', '')} | {tops} | {(r.get('description') or '').replace('|', '/')[:70]} |")
     L += ["", "## Most wanted dependencies", "",
-          "Unported packages blocked only by dependencies: porting these unblocks the most packages.", "",
+          "Dependencies that are not yet on QNX, ranked by how many unported packages each one blocks.", "",
           "| Dependency | Packages waiting on it |", "|---|---|"]
     for name, n in d["most_wanted_dependencies"][:30]:
         L.append(f"| {name} | {n} |")

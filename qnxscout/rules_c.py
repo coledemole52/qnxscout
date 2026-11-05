@@ -342,8 +342,9 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
                 add("QNX051", s.line, f"Linux procfs/sysfs path \"{s.value[:60]}\"", s.value[:60], st)
         elif s.value == "(null)" and not null_reported:
             null_reported = True
-            add("QNX052", s.line, "code or tests rely on glibc printing \"(null)\" for NULL %s arguments",
-                "(null)", st)
+            # A "(null)" literal often means the code already guards NULL strings, so this is only a hint.
+            add("QNX052", s.line, "code mentions \"(null)\": check whether it relies on glibc printing it for "
+                "NULL %s arguments", "(null)", st, "info")
 
     # ---- feature-test macros
     if not proj.defines_qnx_source:
@@ -465,7 +466,12 @@ def _const_eval(expr: str, macros: dict):
     def sub(m):
         name = m.group(0)
         if re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", name):
-            return str(int(name, 0)) if not name.startswith("0") or name.lower().startswith("0x") or name == "0" else str(int(name, 8))
+            try:
+                if name.lower().startswith("0x"):
+                    return str(int(name, 16))
+                return str(int(name, 8)) if name.startswith("0") and len(name) > 1 else str(int(name))
+            except ValueError:
+                return "x"
         v = macros.get(name)
         return str(v) if isinstance(v, int) else "x"
     e = re.sub(r"[A-Za-z_]\w*|0[xX][0-9a-fA-F]+|\d+", sub, e)

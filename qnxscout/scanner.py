@@ -334,6 +334,12 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
         findings.append(Finding(rid, rule.severity, rel, line, msg,
                                 sources[rel].split("\n")[line - 1].strip()[:160] if rel in sources else "",
                                 conf, name, rules_c.is_test_path(rel)))
+    # Usage of compat-library APIs (epoll, eventfd, ...), independent of whether a finding was reported.
+    for rule in kb.RULES:
+        if rule.severity == "link" and rule.link.startswith("-l") and rule.calls:
+            lib = rule.link[2:]
+            rx = re.compile(r"(?<![\w$.>])(" + "|".join(rule.calls) + r")\s*\(")
+            uses[lib] = any(rx.search(lx.code) for lx in lexed.values())
     result.uses = uses
 
     # functions QNX declares in a different header than Linux does

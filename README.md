@@ -7,18 +7,27 @@ qnxscout reads a C/C++ source tree (or a release tarball) on any host and tells 
 ```
 $ qnxscout scan tmux-3.7c.tar.gz
 qnxscout: QNX 8.0 port-readiness report for tmux-3.7c
-  scanned 200 C/C++ files and 5 build files (autotools) in 2.9s
+  scanned 200 C/C++ files and 5 build files (autotools) in 3.4s
 
-  Grade D: Significant porting work  (effort points 47.5, 9 distinct issues)
+  Grade D: Significant porting work  (effort points 49.0, 9 distinct issues, ~8 files to touch)
 
-[BLOCKER] QNX030 SA_RESTART is not defined on QNX              client.c:561, proc.c:250
-[BLOCKER] QNX031 IOV_MAX is not defined on QNX                 compat/imsg-buffer.c:727
-[BLOCKER] QNX042 forkpty/openpty live in <unix.h> on QNX       compat/fdforkpty.c:33
-[RUNTIME] QNX046 flock() does not survive fork() on QNX        client.c:89
-[LINK]    QNX080 Sockets live in libsocket                     client.c:122
-[LINK]    QNX081 POSIX regex lives in libregex                 format.c:4513
-[REVIEW]  QNX079 Stale config.sub/config.guess                 etc/config.sub:5
-[REVIEW]  QNX063 Per-OS source files have no QNX variant       osdep-*.c (falls back to osdep-unknown.c)
+[BLOCKER] QNX030 SA_RESTART is not defined on QNX  (4 hits in 2 files)
+    - client.c:561: SA_RESTART is used
+[BLOCKER] QNX031 IOV_MAX is not defined on QNX  (4 hits in 1 file)
+    - compat/imsg-buffer.c:727: IOV_MAX is used
+[BLOCKER] QNX042 forkpty/openpty live in <unix.h> on QNX  (1 hit in 1 file)
+    - compat/fdforkpty.c:33: forkpty() is called, but no file includes <unix.h>, where QNX declares it
+[RUNTIME] QNX046 flock() is in <fcntl.h> and does not survive fork() on QNX  (1 hit in 1 file)
+    - client.c:89: flock() lock in a program that also forks
+[LINK] QNX080 Sockets live in libsocket  (1 hit in 1 file)
+    - client.c:122: uses socket(), connect(), bind(), listen(); the build only searches for libsocket - QNX ports link -lsocket explicitly even then (conditional)
+[LINK] QNX081 POSIX regex lives in libregex  (1 hit in 1 file)
+    - format.c:4513: uses regcomp(), regexec(), regfree() but the build never links regex
+[REVIEW] QNX063 Per-OS source files have no QNX variant  (1 hit in 1 file)
+    - osdep-aix.c:1: osdep-*.c exists for aix, cygwin, darwin, ... but not QNX; generic fallback: osdep-unknown.c (conditional)
+[REVIEW] QNX079 Stale config.sub/config.guess  (1 hit in 1 file)
+    - etc/config.sub:5: config.sub is from 2017; QNX ports refresh helper scripts this old (conditional)
+(abridged: each finding also prints why, fix and evidence links)
 ```
 
 That is, item for item, what QNX engineers changed to port tmux in [`qnx-ports/aports/extra/tmux`](https://github.com/qnx-ports/aports/tree/main/extra/tmux). qnxscout predicted it from the pristine upstream tarball.
@@ -37,7 +46,7 @@ Today you discover them one compile error at a time, on the target. qnxscout tel
 
 ## What it does
 
-* **{{RULES}} evidence-backed rules.** Every finding links to its source: the [QNX 8.0 C Library Reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/about.html), the [QNX Porting Guide](https://www.qnx.com/developers/docs/qnxeverywhere/com.qnx.doc.qpg/topic/about.html), [QNX's own agent skills](https://github.com/qnx/qnx-agent-skills), or the actual patch QNX engineers wrote for the same problem. See [`docs/RULES.md`](docs/RULES.md).
+* **69 evidence-backed rules.** Every finding links to its source: the [QNX 8.0 C Library Reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/about.html), the [QNX Porting Guide](https://www.qnx.com/developers/docs/qnxeverywhere/com.qnx.doc.qpg/topic/about.html), [QNX's own agent skills](https://github.com/qnx/qnx-agent-skills), or the actual patch QNX engineers wrote for the same problem. See [`docs/RULES.md`](docs/RULES.md).
 * **Real preprocessor evaluation for QNX.** Lines are classified as *compiled on QNX*, *excluded*, or *depends on build configuration*. This finds `#error`s that QNX reaches, `#else` branches where QNX falls into Windows code, and platform chains with no QNX branch, while staying quiet about code that is already Linux-only or behind a working feature test.
 * **Build-system analysis.** CMake and Meson conditions are evaluated as they will run on QNX (`CMAKE_SYSTEM_NAME` is `QNX`, Meson's system is `'qnx'`). That catches `FATAL_ERROR`s QNX reaches, Linux-only branches, `pthread`/`dl`/`util` link items, and C90 builds. Autotools and Makefiles are checked too, including stale `config.sub`.
 * **Effort grade A–E**, calibrated against the size of real QNX port patches.
@@ -79,15 +88,26 @@ Severities:
 
 [`bench/evaluate.py`](bench/evaluate.py) measures qnxscout against reality. For every package in `qnx-ports/aports` it downloads the pristine upstream source the recipe builds from, scans it, and compares the findings with what QNX engineers changed (their patches, plus the extra link flags and steps in the APKBUILD).
 
-{{BENCH_TABLE}}
+| | |
+|---|---|
+| QNX ports scanned from pristine upstream source | 609 of 721 |
+| Real fixes QNX engineers made (package, issue) | 211 in 135 packages |
+| **Predicted by qnxscout before building** | **155 (74%)** |
+| ... counting the right file as a hit | 164 (78%) |
+| Effort score: needed QNX fixes vs. built unchanged (AUC) | 0.777 |
+| Graded **A** (likely builds as-is) and QNX indeed needed no fix | 224 of 232 (97%) |
 
-Full per-package results and per-rule recall are in [`bench/results/`](bench/results/).
+The ground truth is a conservative lower bound. Some QNX recipe flags are redundant (libuv already links
+`socket` in its upstream QNX branch), and a fix QNX made once in a central header counts once. Weak spots are
+documented per rule: large-stack detection (only fixed-size arrays of 256 KiB or more) and C-standard detection
+(only explicit `-std=c89`-style flags) catch a minority of what QNX fixed. Full per-package results and per-rule
+recall are in [`bench/results/`](bench/results/).
 
 ## The porting frontier
 
 [`bench/frontier.py`](bench/frontier.py) asks a forward-looking question: *what could QNX port next, and how hard would each package be?* It takes every Alpine package that is not yet in `qnx-ports/aports`, keeps the ones whose dependencies are all already ported, and scans their pristine sources.
 
-{{FRONTIER_SUMMARY}}
+Of **4,969** Alpine packages with C/C++-style builds that QNX has not ported yet, **1,559** have every dependency already on QNX. qnxscout scanned 957 of them with C/C++ code: **527** are predicted to be grade A or B (build as-is, or link flags and a few defines).
 
 The ranked list is in [`docs/FRONTIER.md`](docs/FRONTIER.md).
 
