@@ -27,6 +27,8 @@ BUILD_NAMES = {"CMakeLists.txt", "meson.build", "meson_options.txt", "meson.opti
 BUILD_EXT = {".cmake", ".mk", ".mak", ".bzl", ".gyp", ".gypi", ".gn", ".gni", ".pro", ".pri", ".in",
              ".am", ".ac", ".m4"}
 MAX_BYTES = 4 * 1024 * 1024
+LINK_RX = {rid: re.compile(r"(?<![\w$.>])(" + "|".join(sorted(names, key=len, reverse=True)) + r")\s*\(")
+           for rid, (names, _lib) in kb.LINK_CHECKS.items()}
 WELL_KNOWN_FACTS = {
     "G_OS_UNIX": ("def", 1), "G_OS_WIN32": ("undef", None), "G_PLATFORM_WIN32": ("undef", None),
     "Q_OS_QNX": ("def", 1), "Q_OS_UNIX": ("def", 1), "Q_OS_LINUX": ("undef", None), "Q_OS_WIN": ("undef", None),
@@ -248,14 +250,15 @@ def scan(root: str, arch: str = "any", excludes: Iterable[str] = (), include_tes
                 f.note = f"{rel} is Linux-specific; it matters only if the QNX build compiles it"
         findings.extend(file_findings)
         for rid, (names, _lib) in kb.LINK_CHECKS.items():
-            for name in names:
+            if all(n in used_calls for n in names):
+                continue
+            for m in LINK_RX[rid].finditer(lx.code):
+                name = m.group(1)
                 if name in used_calls:
                     continue
-                m = re.search(r"(?<![\w$.>])" + name + r"\s*\(", lx.code)
-                if m:
-                    line = lx.line_of(m.start())
-                    if pp.line_state[line] is not False and line not in lx.directive_lines:
-                        used_calls[name].append((rel, line, pp.line_state[line]))
+                line = lx.line_of(m.start())
+                if pp.line_state[line] is not False and line not in lx.directive_lines:
+                    used_calls[name].append((rel, line, pp.line_state[line]))
         if progress:
             progress("rules", idx + 1, len(lexed))
 

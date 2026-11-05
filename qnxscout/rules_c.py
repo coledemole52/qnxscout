@@ -57,6 +57,9 @@ ELEM_SIZE = {"char": 1, "uint8_t": 1, "int8_t": 1, "u8": 1, "s8": 1, "byte": 1, 
 ARRAY_DECL_RE = re.compile(
     r"(?:^\s*|[;{}]\s*)(?:(?:const|volatile|register|unsigned|signed|alignas\s*\([^)]*\)|__attribute__\s*\(\([^)]*\)\))\s+)*"
     r"([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\[\s*([^\[\];=]{1,80}?)\s*\]\s*(?:\[\s*([^\[\];=]{1,40}?)\s*\])?\s*(?:=|;)")
+SELECT_RE = re.compile(r"(?<![\w$.>])(select\s*\(|fd_set\b)")
+FLOCK_RE = re.compile(r"(?<![\w$.>])flock\s*\(")
+OPEN_ANY_RE = re.compile(r"=\s*(?:::)?(?:open|open64|openat|openat64)\s*\(")
 AT_FUNCS = r"(?:openat|openat64|fstatat|fstatat64|unlinkat|mkdirat|readlinkat|renameat|faccessat|fchmodat|" \
            r"fchownat|utimensat|linkat|symlinkat|mkfifoat|mknodat|scandirat)"
 
@@ -278,7 +281,7 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
                         break
 
     # ---- makedev() with two arguments
-    for i, line in enumerate(lx.lines, 1):
+    for i, line in (enumerate(lx.lines, 1) if "makedev" in lx.code else ()):
         if "makedev" not in line or pp.line_state[i] is False or i in lx.directive_lines:
             continue
         for m in re.finditer(r"(?<![\w$])makedev\s*\(", line):
@@ -302,7 +305,7 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
 
     # ---- O_DIRECTORY heuristic
     open_re = re.compile(r"([A-Za-z_][\w.\->\[\]]*)\s*=\s*(?:::)?(open|open64|openat|openat64)\s*\(")
-    for i, line in enumerate(lx.lines, 1):
+    for i, line in (enumerate(lx.lines, 1) if OPEN_ANY_RE.search(lx.code) else ()):
         if pp.line_state[i] is False or i in lx.directive_lines or "open" not in line:
             continue
         for m in open_re.finditer(line):
@@ -358,7 +361,7 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
 
     # ---- select() without <sys/select.h>
     incs = {i.header for i in pp.includes}
-    if "sys/select.h" not in incs:
+    if "sys/select.h" not in incs and SELECT_RE.search(lx.code):
         for i, line in enumerate(lx.lines, 1):
             if pp.line_state[i] is True and i not in lx.directive_lines and re.search(r"(?<![\w$.>])(select\s*\(|fd_set\b)", line):
                 if _looks_like_declaration(line[:line.find("select")].rstrip()) and "select(" in line:
@@ -367,7 +370,7 @@ def check_file(ctx: FileCtx, src: str, proj: ProjectIndex) -> list:
                 break
 
     # ---- flock + fork / fork + exec
-    for i, line in enumerate(lx.lines, 1):
+    for i, line in (enumerate(lx.lines, 1) if proj.calls_fork and FLOCK_RE.search(lx.code) else ()):
         if pp.line_state[i] is False or i in lx.directive_lines:
             continue
         if re.search(r"(?<![\w$.>])flock\s*\(", line) and not _looks_like_declaration(line[:line.find("flock")].rstrip()):

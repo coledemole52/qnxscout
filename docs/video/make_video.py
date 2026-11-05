@@ -48,8 +48,8 @@ pre{font-size:25px;line-height:1.42;white-space:pre-wrap}
 .caption{position:absolute;left:0;right:0;bottom:0;padding:22px 120px;background:rgba(1,4,9,.86);
 border-top:1px solid #30363d;font-size:31px;color:#e6edf3}
 table{border-collapse:collapse;width:100%}td{font-size:28px;padding:9px 12px;border-bottom:1px solid #21262d}
-.barrow{display:grid;grid-template-columns:420px 1fr 120px;gap:18px;align-items:center;margin:9px 0}
-.barrow .lbl{font-size:26px;color:#c9d1d9}.track{height:26px;background:#21262d;border-radius:6px;overflow:hidden}
+.barrow{display:grid;grid-template-columns:640px 1fr 110px;gap:18px;align-items:center;margin:8px 0}
+.barrow .lbl{font-size:23px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.track{height:26px;background:#21262d;border-radius:6px;overflow:hidden}
 .fill{height:100%;background:linear-gradient(90deg,#2f81f7,#7ee787)}.pct{font-size:26px;text-align:right}
 .logo{font-family:'JetBrains Mono',monospace;color:#6ea8ff}
 """
@@ -99,7 +99,11 @@ def scenes(data: dict) -> list:
     S.append((page(f"""<div class="wrap"><div class="kicker">Checked against reality</div>
 <h2>qnxscout's prediction vs. QNX's real tmux port</h2><div class="cols">
 <div class="card"><h3>qnxscout (pristine source)</h3><ul style="list-style:none;padding:0">{pred}</ul></div>
-<div class="card"><h3>qnx-ports/aports/extra/tmux</h3><pre style="font-size:22px">{html.escape(data['tmux_patch'])}</pre></div>
+<div class="card"><h3>qnx-ports/aports/extra/tmux</h3><pre style="font-size:21px;line-height:1.32"><span class="d"># qnx-compat.patch (compat.h)</span>
+{html.escape(data['tmux_patch'])}
+<span class="d"># APKBUILD</span>
+prepare() {{ default_prepare; <span class="g">update_config_sub</span>; }}
+CFLAGS="$CFLAGS -Wl,<span class="g">-lsocket,-lregex</span>"</pre></div>
 </div></div>""", "Item for item, the changes QNX engineers made. And no noise from FreeBSD-only files."), 18))
     S.append((page(f"""<div class="wrap" style="padding:60px 120px"><div class="kicker">Shareable HTML report</div>
 <img src="file://{data['report_png']}" style="width:100%;border-radius:14px;border:1px solid #30363d"></div>""",
@@ -132,7 +136,7 @@ qnxscout scan . --fail-on blocker</pre><p style="margin-top:14px">SARIF + GitHub
 <div class="card"><h3>Zero dependencies</h3><p>Pure Python 3.9+. Linux, macOS, Windows.</p></div></div></div>"""), 14))
     S.append((page("""<div class="wrap" style="justify-content:center"><h1><span class="logo">qnxscout</span></h1>
 <p style="font-size:44px;margin-top:20px">Predicted work is work you can plan.</p>
-<p style="margin-top:40px" class="mono">github.com/OWNER/qnxscout · Apache-2.0</p></div>"""), 8))
+<p style="margin-top:40px" class="mono">Open source · Apache-2.0 · repository link in the description</p></div>"""), 8))
     return S
 
 
@@ -173,13 +177,15 @@ def main():
     bars = []
     for rid, d in sorted(per.items(), key=lambda kv: -kv[1]["gt"]):
         if d["gt"] >= 3:
-            bars.append((f"{rid} {kb.RULES_BY_ID[rid].title[:28]}", 100.0 * d["hit"] / d["gt"]))
-    bars = bars[:7]
+            bars.append((f"{rid} {kb.RULES_BY_ID[rid].title[:40]} ({d['hit']}/{d['gt']})", 100.0 * d["hit"] / d["gt"]))
+    bars = bars[:8]
     top = [r for r in fr["results"] if r.get("status") == "ok" and (r.get("c_files") or 0) >= 10][:9]
     for r in top:
         r["grade"] = r["score"]["grade"]
     data = {
-        "tmux_text": tmux_text, "tmux_patch": open(a.tmux_patch).read().split("@@", 2)[-1][-900:],
+        "tmux_text": "\n".join(tmux_text.split("\n")[:21]),
+        "tmux_patch": "\n".join(l[1:] for l in open(a.tmux_patch).read().split("\n")
+                                if l.startswith("+") and not l.startswith("+++") and l[1:].strip()),
         "report_png": report_png, "explain": explain, "rules": len(kb.RULES),
         "recall": f"{round(100 * bench['recall'])}%", "gt": bench["ground_truth_issues"],
         "scanned": bench["packages_scanned"], "auc": bench.get("auc_effort_score") or "n/a", "bars": bars,
