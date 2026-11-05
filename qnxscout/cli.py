@@ -1,0 +1,139 @@
+"""Command line interface: ``qnxscout scan PATH``."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import tarfile
+import tempfile
+import zipfile
+
+from . import __version__, kb
+
+
+def _extract_archive(path: str) -> str:
+    dest = tempfile.mkdtemp(prefix="qnxscout-")
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            for m in z.infolist():
+                target = os.path.realpath(os.path.join(dest, m.filename))
+                if not target.startswith(os.path.realpath(dest) + os.sep):
+                    continue
+                z.extract(m, dest)
+    else:
+        with tarfile.open(path) as t:
+            members = []
+            for m in t.getmembers():
+                target = os.path.realpath(os.path.join(dest, m.name))
+                if not target.startswith(os.path.realpath(dest) + os.sep) or m.issym() or m.islnk() or m.isdev():
+                    continue
+                members.append(m)
+            t.extractall(dest, members=members)
+    entries = os.listdir(dest)
+    return os.path.join(dest, entries[0]) if len(entries) == 1 and os.path.isdir(os.path.join(dest, entries[0])) else dest
+
+
+def cmd_scan(args) -> int:
+    from .scanner import scan
+    path = args.path
+    if os.path.isfile(path):
+        path = _extract_archive(path)
+    sdp = None
+    if args.sdp:
+        from .sdp import SDP
+        sdp = SDP(args.sdp, arch=args.arch)
+    progress = None
+    if args.progress:
+        def progress(stage, i, n):
+            if i == n or i % 200 == 0:
+                print(f"\r{stage}: {i}/{n}", end="", file=sys.stderr, flush=True)
+    result = scan(path, arch=args.arch, excludes=args.exclude or [], include_tests=not args.no_tests,
+                  sdp=sdp, stack_threshold=args.stack_threshold * 1024, progress=progress)
+    if args.progress:
+        print(file=sys.stderr)
+    fmt = args.format
+    if fmt == "text":
+        from .report import text
+        out = text.render(result, color=None if not args.output else False, show_info=args.show_info)
+    elif fmt == "json":
+        from .report import jsonreport
+        out = jsonreport.render(result)
+    elif fmt == "sarif":
+        from .report import sarif
+        out = sarif.render(result)
+    elif fmt == "md":
+        from .report import markdown
+        out = markdown.render(result)
+    elif fmt == "html":
+        from .report import html
+        out = html.render(result)
+    else:
+        raise SystemExit(f"unknown format {fmt}")
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(out)
+        print(f"wrote {args.output} (grade {result.score['grade']}, {len(result.findings)} findings)", file=sys.stderr)
+    else:
+        print(out)
+    if args.fail_on:
+        order = kb.SEVERITIES
+        limit = order.index(args.fail_on)
+        if any(order.index(f.severity) <= limit and f.confidence == "high" for f in result.findings):
+            return 2
+    return 0
+
+
+def cmd_rules(args) -> int:
+    for r in kb.RULES:
+        print(f"{r.id}  {r.severity:8s} {r.category:10s} {r.title}")
+    return 0
+
+
+def cmd_explain(args) -> int:
+    r = kb.RULES_BY_ID.get(args.rule.upper())
+    if not r:
+        print(f"unknown rule {args.rule}", file=sys.stderr)
+        return 1
+    print(f"{r.id}: {r.title}\nseverity: {r.severity} ({kb.SEVERITY_LABEL[r.severity]})\ncategory: {r.category}"
+          f"   effort: {r.effort}\n\nWhy:\n  {r.why}\n\nFix:\n  {r.fix}\n")
+    if r.calls or r.words or r.members or r.headers:
+        print("Detects: " + ", ".join([c + "()" for c in r.calls] + r.words + ["." + m for m in r.members] +
+                                       ["<" + h + ">" for h in r.headers if not h.endswith("__never")]))
+    print("\nEvidence:")
+    for label, url in r.evidence_links():
+        print(f"  - {label}\n    {url}")
+    return 0
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="qnxscout", description="Find what breaks before you port C/C++ software to QNX 8.0.")
+    p.add_argument("--version", action="version", version=f"qnxscout {__version__}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan", help="scan a source tree or archive")
+    s.add_argument("path", help="source directory or .tar.gz/.tar.xz/.zip archive")
+    s.add_argument("-f", "--format", default="text", choices=["text", "json", "sarif", "md", "html"])
+    s.add_argument("-o", "--output", help="write the report to a file")
+    s.add_argument("--arch", default="any", choices=["any", "x86_64", "aarch64le"],
+                   help="target architecture (default: any QNX 8.0 target)")
+    s.add_argument("--sdp", metavar="QNX_TARGET", help="verify against an installed QNX SDP (path to $QNX_TARGET)")
+    s.add_argument("--exclude", action="append", metavar="GLOB", help="skip paths matching GLOB (repeatable)")
+    s.add_argument("--no-tests", action="store_true", help="skip test directories")
+    s.add_argument("--show-info", action="store_true", help="include info-level findings in text output")
+    s.add_argument("--stack-threshold", type=int, default=256, metavar="KIB",
+                   help="report local arrays at least this large (default 256 KiB)")
+    s.add_argument("--fail-on", choices=kb.SEVERITIES, help="exit 2 if a high-confidence finding of this "
+                   "severity or worse exists (for CI)")
+    s.add_argument("--progress", action="store_true", help="show progress on stderr")
+    s.set_defaults(func=cmd_scan)
+    r = sub.add_parser("rules", help="list all rules")
+    r.set_defaults(func=cmd_rules)
+    e = sub.add_parser("explain", help="explain one rule and show its evidence")
+    e.add_argument("rule")
+    e.set_defaults(func=cmd_explain)
+    args = p.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
