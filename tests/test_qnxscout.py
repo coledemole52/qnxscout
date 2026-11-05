@@ -83,7 +83,8 @@ class ExprTests(unittest.TestCase):
 
 class PreprocTests(unittest.TestCase):
     def test_platform_chain_and_error(self):
-        lx = lex(open(os.path.join(SAMPLE, "src", "platform.h")).read())
+        with open(os.path.join(SAMPLE, "src", "platform.h")) as fh:
+            lx = lex(fh.read())
         pp = run(lx, MacroEnv())
         self.assertEqual(pp.guard_macro, "PLATFORM_H")
         self.assertEqual(len(pp.errors), 1)
@@ -116,7 +117,8 @@ class PreprocTests(unittest.TestCase):
 
 class BuildSystemTests(unittest.TestCase):
     def test_cmake(self):
-        txt = open(os.path.join(SAMPLE, "CMakeLists.txt")).read()
+        with open(os.path.join(SAMPLE, "CMakeLists.txt")) as fh:
+            txt = fh.read()
         f = buildsys.analyze_cmake("CMakeLists.txt", txt)
         rules = sorted({x.rule for x in f})
         self.assertIn("QNX074", rules)   # C90
@@ -246,6 +248,54 @@ class MiscTests(unittest.TestCase):
         out = subprocess.run([sys.executable, "-m", "qnxscout", "explain", "QNX001"],
                              cwd=os.path.dirname(HERE), capture_output=True, text=True)
         self.assertIn("epoll", out.stdout)
+
+
+class NewerRuleTests(unittest.TestCase):
+    def _proj(self, files):
+        tmp = tempfile.mkdtemp()
+        for rel, text in files.items():
+            path = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write(text)
+        self.addCleanup(shutil.rmtree, tmp)
+        return scan(tmp)
+
+    def test_socketcan_is_a_link_fix(self):
+        r = self._proj({"cand.c": "#include <linux/can.h>\n#include <linux/sockios.h>\n"
+                        "int s(void){ return socket(PF_CAN, 3, 1); }\n", "Makefile": "all:\n\tcc cand.c -lsocket\n"})
+        rules = {(f.rule, f.symbol) for f in r.findings if f.severity != "info"}
+        self.assertIn(("QNX048", "linux/can.h"), rules)
+        self.assertIn(("QNX048", "linux/sockios.h"), rules)
+        self.assertFalse(any(f.rule == "QNX043" for f in r.findings))
+
+    def test_makefile_os_conditionals(self):
+        mk = ("UNAME := $(shell uname -s)\nifeq ($(UNAME),Linux)\nLIBS += -lrt -ldl\nelse\nLIBS += -lm\nendif\n"
+              "ifneq ($(OSTYPE),Darwin)\nLIBS += -lpthread\nendif\n")
+        r = self._proj({"a.c": "int x;\n", "Makefile": mk})
+        rules = {f.rule for f in r.findings}
+        self.assertNotIn("QNX073", rules)
+        self.assertNotIn("QNX071", rules)
+        self.assertIn("QNX070", rules)
+
+    def test_prefixed_have_macros(self):
+        r = self._proj({"a.c": "#if (NGX_HAVE_SCHED_SETAFFINITY)\nvoid f(void){ sched_setaffinity(0,0,0); }\n#endif\n"})
+        self.assertFalse([f for f in r.findings if f.rule == "QNX012"])
+
+    def test_linux_file_with_generic_sibling(self):
+        r = self._proj({"os/sys_linux.c": "#include <sys/prctl.h>\n", "os/sys_posix.c": "int y;\n",
+                        "os/sys_freebsd.c": "int z;\n"})
+        lin = [f for f in r.findings if f.file == "os/sys_linux.c"]
+        self.assertTrue(lin and all(f.severity == "info" for f in lin))
+
+    def test_rtos_platform_files_are_downgraded(self):
+        r = self._proj({"port/vxworks/net.c": "#include <sys/epoll.h>\n", "port/zephyr_glue.c": "#include <sys/epoll.h>\n"})
+        self.assertTrue(r.findings and all(f.severity == "info" for f in r.findings))
+
+    def test_examples_count_half(self):
+        r = self._proj({"examples/demo.c": "int main(void){ return prctl(1); }\n"})
+        f = [x for x in r.findings if x.rule == "QNX013"]
+        self.assertTrue(f and f[0].in_tests)
 
 
 if __name__ == "__main__":
