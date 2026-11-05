@@ -1,3 +1,5 @@
+> Historical recovery checklist. The final video is rebuilt, not recovered. See `docs/RELEASE_VERIFICATION.md` and the public repository for current evidence.
+
 # Owner checklist: submitting qnxscout to the QNX Global Hackathon
 
 **Deadline: December 15, 2026, 2:00 pm Eastern (Toronto) time.** Judging runs January 15–29, 2027, and winners are announced around February 4, 2027.
@@ -110,3 +112,4 @@ report them as income in Canada.
 | Honorable Mention (3) | US$1,000 each | Fallback |
 
 These are judged prizes, so nothing is guaranteed. One submission can win a category prize and a bonus prize.
+

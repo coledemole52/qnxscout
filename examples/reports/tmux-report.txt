@@ -1,0 +1,66 @@
+qnxscout: QNX 8.0 port-readiness report for tmux-3.7c
+  scanned 200 C/C++ files and 5 build files (autotools) in 1.42s
+
+  Grade D: Significant porting work  (effort points 49.0, 9 distinct issues, ~8 files to touch)
+  findings: blocker 9, runtime 1, link 2, review 4, info 8
+
+[BLOCKER] QNX030 SA_RESTART is not defined on QNX  (4 hits in 2 files)
+    why: QNX 8.0 does not define SA_RESTART; five QNX ports (libevent, tmux, tftp-hpa, chrony, python3) add '#define SA_RESTART 0'.
+    fix: Guard it: #ifndef SA_RESTART / #define SA_RESTART 0 / #endif, and make sure the code retries on EINTR.
+    - client.c:561: SA_RESTART is used
+    - client.c:794: SA_RESTART is used
+    - proc.c:250: SA_RESTART is used
+    - proc.c:284: SA_RESTART is used
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/libevent/fix-qnx.patch; https://github.com/qnx-ports/aports/blob/main/extra/tmux/qnx-compat.patch
+
+[BLOCKER] QNX031 IOV_MAX is not defined on QNX  (4 hits in 1 file)
+    why: QNX 8.0 does not define IOV_MAX (tmux, valkey, capnproto and libuv ports had to supply it).
+    fix: Use UIO_MAXIOV from <sys/uio.h> (what the tmux port does) or a 1024 fallback.
+    - compat/imsg-buffer.c:727: IOV_MAX is used
+    - compat/imsg-buffer.c:734: IOV_MAX is used
+    - compat/imsg-buffer.c:760: IOV_MAX is used
+    - compat/imsg-buffer.c:775: IOV_MAX is used
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/tmux/qnx-compat.patch; https://github.com/qnx-ports/aports/blob/main/extra/valkey/fix-IOV_MAX.patch
+
+[BLOCKER] QNX042 forkpty/openpty live in <unix.h> on QNX  (1 hit in 1 file)
+    why: QNX implements forkpty()/openpty()/login_tty() in libc but declares them in <unix.h>, not <pty.h>/<util.h>/<libutil.h>, and there is no libutil (see QNX052).
+    fix: #ifdef __QNX__ / #include <unix.h> (the neovim port does exactly this).
+    - compat/fdforkpty.c:33: forkpty() is called, but no file includes <unix.h>, where QNX declares it
+    evidence: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/f/forkpty.html; https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/o/openpty.html
+
+[RUNTIME] QNX046 flock() is in <fcntl.h> and does not survive fork() on QNX  (1 hit in 1 file)
+    why: QNX declares flock() in <fcntl.h>. More importantly, a fork() drops the parent's flock(), so lock files used to detect a running instance stop working (the wayland port switched to lockf()).
+    fix: For lock files held across fork()/daemon(), use lockf() or fcntl(F_SETLK) record locks.
+    - client.c:89: flock() lock in a program that also forks
+    evidence: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/f/flock.html; https://github.com/qnx-ports/aports/blob/main/extra/wayland/0003-qnx-flock.patch
+
+[LINK] QNX080 Sockets live in libsocket  (1 hit in 1 file)
+    why: QNX keeps the BSD socket API in libsocket, not libc. The code uses sockets but the build does not link socket explicitly, so linking can fail with undefined socket()/connect()/getaddrinfo(). QNX's recipes add -lsocket even for projects whose configure searches for it (bash, python3, glib, dbus, exiv2, valkey).
+    fix: Link -lsocket on QNX (QNX recipes pass it through LDFLAGS, e.g. LDFLAGS="$LDFLAGS -lsocket").
+    - client.c:122: uses socket(), connect(), bind(), listen(); the build only searches for libsocket - QNX ports link -lsocket explicitly even then (conditional)
+    evidence: https://github.com/qnx/qnx-agent-skills/blob/main/skills/qnx-platform-facts/SKILL.md; https://github.com/qnx-ports/aports/blob/main/extra/exiv2/003-add-socket-linker-flags.patch
+
+[LINK] QNX081 POSIX regex lives in libregex  (1 hit in 1 file)
+    why: QNX keeps regcomp()/regexec() in libregex, not libc (QNX 8.0 C Library Reference).
+    fix: Link -lregex on QNX (QNX recipes pass it through LDFLAGS).
+    - format.c:4513: uses regcomp(), regexec(), regfree() but the build never links regex
+    evidence: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/r/regcomp.html; https://github.com/qnx/qnx-agent-skills/blob/main/skills/qnx-platform-facts/SKILL.md
+
+[REVIEW] QNX051 /proc and /sys paths differ on QNX  (2 hits in 2 files)
+    why: QNX has a /proc filesystem, but not Linux's layout: /proc/self/exe, /proc/meminfo, /proc/cpuinfo, /proc/self/maps and /sys do not exist (protobuf, libuv, gdb, webkit ports).
+    fix: Executable path: _cmdname() (what the protobuf port uses); CPU count: _syspage_ptr->num_cpu; memory: /proc/vm/stats; keep the Linux path behind #ifdef __linux__.
+    - compat/closefrom.c:134: Linux procfs/sysfs path "/proc/%ld/fd" (conditional)
+    - compat/getdtablecount.c:50: Linux procfs/sysfs path "/proc/%ld/fd/*" (conditional)
+    evidence: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/c/_cmdname.html; https://github.com/qnx-ports/aports/blob/main/extra/protobuf/0001-qnx-fix-protoc-abs-path.patch
+
+[REVIEW] QNX063 Per-OS source files have no QNX variant  (1 hit in 1 file)
+    why: The project keeps one implementation file per operating system (e.g. osdep-linux.c, osdep-freebsd.c) and the build picks one by host OS. There is no QNX variant, so the QNX build falls back to a generic file if one exists, or fails to link.
+    fix: Add a QNX variant, usually by starting from the FreeBSD or generic/unknown implementation, and teach the build to select it for QNX.
+    - osdep-aix.c:1: osdep-*.c exists for aix, cygwin, darwin, dragonfly, freebsd, haiku, hpux, linux, netbsd, openbsd, solaris but not QNX; generic fallback: osdep-unknown.c (conditional)
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/chrony/01-sys-c.patch; https://github.com/qnx-ports/aports/blob/main/extra/tmux/qnx-compat.patch
+
+[REVIEW] QNX079 Stale config.sub/config.guess  (1 hit in 1 file)
+    why: Old autotools helper scripts may reject or mis-parse the QNX 8 host triplet (nto-qnx8.0.0). Refreshing them is routine for QNX ports: 30 QNX APKBUILDs call update_config_sub.
+    fix: Refresh config.sub/config.guess (abuild's update_config_sub, or autoreconf -fi).
+    - etc/config.sub:5: config.sub is from 2017; QNX ports refresh helper scripts this old (conditional)
+    evidence: https://github.com/qnx-ports/aports/blob/main/core/flex/APKBUILD; https://github.com/qnx-ports/aports/blob/main/extra/fftw/APKBUILD

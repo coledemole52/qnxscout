@@ -241,6 +241,12 @@ class MiscTests(unittest.TestCase):
             shutil.rmtree(tmp)
 
     def test_cli(self):
+        missing = os.path.join(HERE, "does-not-exist")
+        out = subprocess.run([sys.executable, "-m", "qnxscout", "scan", missing],
+                             cwd=os.path.dirname(HERE), capture_output=True, text=True)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("source path does not exist", out.stderr)
+        self.assertNotIn("Grade A", out.stdout)
         out = subprocess.run([sys.executable, "-m", "qnxscout", "scan", SAMPLE, "--fail-on", "blocker"],
                              cwd=os.path.dirname(HERE), capture_output=True, text=True)
         self.assertEqual(out.returncode, 2)

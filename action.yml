@@ -19,10 +19,16 @@ runs:
     - shell: bash
       run: python3 -m pip install --quiet "${{ github.action_path }}"
     - shell: bash
+      env:
+        QNXSCOUT_PATH: ${{ inputs.path }}
+        QNXSCOUT_SARIF: ${{ inputs.sarif }}
       run: |
-        qnxscout scan "${{ inputs.path }}" -f sarif -o "${{ inputs.sarif }}"
-        qnxscout scan "${{ inputs.path }}" -f md -o qnxscout.md
+        qnxscout scan "$QNXSCOUT_PATH" -f sarif -o "$QNXSCOUT_SARIF"
+        qnxscout scan "$QNXSCOUT_PATH" -f md -o qnxscout.md
         cat qnxscout.md >> "$GITHUB_STEP_SUMMARY"
     - shell: bash
       if: ${{ inputs.fail-on != '' }}
-      run: qnxscout scan "${{ inputs.path }}" --fail-on "${{ inputs.fail-on }}" > /dev/null
+      env:
+        QNXSCOUT_PATH: ${{ inputs.path }}
+        QNXSCOUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: qnxscout scan "$QNXSCOUT_PATH" --fail-on "$QNXSCOUT_FAIL_ON" > /dev/null

@@ -1,0 +1,24 @@
+qnxscout: QNX 8.0 port-readiness report for libhydrogen-master
+  scanned 35 C/C++ files and 6 build files (cmake, make, meson) in 0.1s
+
+  Grade B: Minor fixes: link flags or a few defines  (effort points 4.0, 3 distinct issues, ~3 files to touch)
+  findings: review 4, info 1
+
+[REVIEW] QNX060 #error is reachable when compiling for QNX  (2 hits in 1 file)
+    why: QNX is not one of the platforms this #if chain recognises, so the compiler reaches the #error. This is the most common first failure when porting (capnproto, chrony, fakeroot ports).
+    fix: Add a '#elif defined(__QNX__)' branch; QNX is POSIX, so the BSD or generic-POSIX branch is usually right.
+    - impl/random.h:42: #error pico-sdk detected but pico_rand not configured may be reached on QNX (depends on build configuration macros) (conditional)
+    - impl/random.h:46: #error Unsupported platform may be reached on QNX (depends on build configuration macros) (conditional)
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/chrony/01-sys-c.patch; https://github.com/qnx-ports/aports/blob/main/extra/capnproto/0001-add-qnx-build.patch
+
+[REVIEW] QNX062 No QNX branch in a platform #if chain  (1 hit in 1 file)
+    why: This chain has branches for specific platforms (Linux, macOS, BSD, ...) but none matches QNX and there is no #else, so QNX silently gets none of these definitions.
+    fix: Add a '#elif defined(__QNX__)' branch, usually by reusing the generic POSIX/BSD implementation.
+    - impl/common.h:52: QNX takes no branch of this #if chain (__GLIBC__, __OpenBSD__); the Linux branch provides e.g. '#    if __GLIBC_PREREQ(2, 25)'
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/chrony/01-sys-c.patch; https://github.com/qnx/qnx-agent-skills/blob/main/skills/qnx-platform-facts/SKILL.md
+
+[REVIEW] QNX063 Per-OS source files have no QNX variant  (1 hit in 1 file)
+    why: The project keeps one implementation file per operating system (e.g. osdep-linux.c, osdep-freebsd.c) and the build picks one by host OS. There is no QNX variant, so the QNX build falls back to a generic file if one exists, or fails to link.
+    fix: Add a QNX variant, usually by starting from the FreeBSD or generic/unknown implementation, and teach the build to select it for QNX.
+    - impl/random/esp32.h:1: impl/random/*.h exists for esp32, mbed, riot, wasm, windows, zephyr but not QNX; generic fallback: impl/random/unix.h (conditional)
+    evidence: https://github.com/qnx-ports/aports/blob/main/extra/chrony/01-sys-c.patch; https://github.com/qnx-ports/aports/blob/main/extra/tmux/qnx-compat.patch

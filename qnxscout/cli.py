@@ -41,6 +41,9 @@ def _extract_archive(path: str) -> str:
 def cmd_scan(args) -> int:
     from .scanner import scan
     path = args.path
+    if not os.path.exists(path):
+        print(f"qnxscout: source path does not exist: {path}", file=sys.stderr)
+        return 1
     tmp_root = None
     if os.path.isfile(path):
         path = _extract_archive(path)

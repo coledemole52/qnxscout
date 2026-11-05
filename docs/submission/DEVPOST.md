@@ -11,7 +11,7 @@ qnxscout
 
 ## Tagline (Elevator pitch, 200 chars max)
 
-Know what breaks before you port to QNX 8.0. qnxscout reads any C/C++ source tree and predicts the fixes QNX engineers would make, each backed by QNX docs and real QNX port patches.
+Know what breaks before you port to QNX 8.0. qnxscout reads any C/C++ source tree and flags likely compatibility issues with actionable fixes, each backed by QNX docs and real QNX port patches.
 
 ## Category
 
@@ -45,7 +45,7 @@ Today each one is discovered one compile error at a time, on the target. We want
 * **Quick wins first.** It separates true blockers from link-only fixes and lists the link flags you need, such as `-lsocket -lregex -lepoll -leventfd`. Many "missing" Linux APIs are actually available on QNX Everywhere through QNX's compatibility libraries, which the official guide does not mention.
 * **Optional SDP verification** (`--sdp $QNX_TARGET`). It checks every finding against your installed QNX SDP's headers and the symbols your target libraries actually export, read directly from ELF.
 * **Fits existing workflows.** Output is terminal, HTML, Markdown, JSON or **SARIF**. A GitHub Action shows QNX issues in Code Scanning, and `--fail-on blocker` can gate CI.
-* **The porting frontier.** We ran qnxscout over Alpine's package tree. **4,969** Alpine packages with C/C++-style builds are not yet in `qnx-ports/aports`, and **1,559** of them already have every dependency on QNX. We scanned those and ranked them by predicted effort. The result is a ready-made backlog for QNX's porting effort and for anyone entering the Open-Source Ports category.
+* **The porting frontier.** We ran qnxscout over Alpine's package tree. **4,969** Alpine packages with C/C++-style builds are not yet in `qnx-ports/aports`, and **1,559** of them pass saved dependency-name availability checks (versions and builds unverified). We scanned those and ranked them by predicted effort. The result is a ready-made backlog for QNX's porting effort and for anyone entering the Open-Source Ports category.
 
 ### How we built it
 
@@ -60,10 +60,10 @@ qnxscout is pure Python with no dependencies, so it installs anywhere QNX develo
 ### Validation (from `bench/`)
 
 * Packages evaluated: **609** QNX ports scanned from pristine upstream source.
-* Ground truth: **211** distinct issues QNX engineers fixed in **135** packages.
-* **Recall: 74%.** qnxscout predicted that share of them from the pristine source alone, before anyone built anything. With location credit (it flagged the file QNX patched) the figure is **78%**.
-* The effort score separates packages that needed QNX fixes from those that built unchanged with **AUC 0.777**.
-* Worked example: for tmux 3.7c qnxscout predicts every change in QNX's port, namely `SA_RESTART`, `IOV_MAX`, `<unix.h>` for `forkpty`, `-lregex`, `-lsocket`, and the `config.sub` refresh. It correctly stays quiet about the FreeBSD-, Haiku- and AIX-only files that QNX never compiles.
+* Historical labels: **211** identified, rule-mappable (package, issue) pairs in **135** packages, extracted from QNX patches and build recipes.
+* **Retrospective same-rule recall: 155/211 (73.5%).** This covers identified rule-mappable historical issues, not all modifications engineers made. Labels use the rule vocabulary and some evaluated ports informed development, so this is not an independent held-out or prospective result. File-location credit gives 164/211 (77.7%), a weaker metric.
+* The effort score separates packages that needed QNX fixes from those with no identified rule-mappable fixes with **AUC 0.777**.
+* Worked example: for tmux 3.7c qnxscout flags identified historical compatibility patterns, namely `SA_RESTART`, `IOV_MAX`, `<unix.h>` for `forkpty`, `-lregex`, `-lsocket`, and the `config.sub` refresh. It correctly stays quiet about the FreeBSD-, Haiku- and AIX-only files that QNX never compiles.
 
 ### Challenges we ran into
 
@@ -75,7 +75,7 @@ qnxscout is pure Python with no dependencies, so it installs anywhere QNX develo
 
 * Predicting real QNX engineering work from pristine source, measured across QNX's whole port tree instead of a hand-picked demo.
 * A 69-rule knowledge base in which every claim links to public QNX evidence.
-* The porting frontier: 1,559 unblocked Alpine packages, ranked by predicted effort. 527 of them are predicted grade A/B.
+* The porting frontier: 1,559 Alpine packages passing dependency-name checks (builds unverified), ranked by predicted effort. 527 of them are predicted grade A/B.
 * Zero-dependency install, SARIF and GitHub Code Scanning integration, and SDP verification that reads ELF directly.
 
 ### What we learned
@@ -97,8 +97,8 @@ python · c · c++ · cmake · meson · autotools · sarif · github-actions · 
 
 ## Try it out (links)
 
-* Repository: `https://github.com/OWNER/qnxscout`
-* Codelab: `https://github.com/OWNER/qnxscout/blob/main/docs/codelab/qnxscout-port-readiness.md`
+* Repository: `https://github.com/coledemole52/qnxscout`
+* Codelab: `https://github.com/coledemole52/qnxscout/blob/main/docs/codelab/qnxscout-port-readiness.md`
 
 ---
 
@@ -114,7 +114,7 @@ qnxscout is a host-based developer tool whose output is specifically for buildin
 * `qnxscout/buildsys.py` evaluates CMake (`CMAKE_SYSTEM_NAME = QNX`) and Meson (`system = 'qnx'`) as on QNX.
 * `qnxscout/sdp.py` verifies findings against an installed QNX SDP 8.0 (`$QNX_TARGET` headers and ELF exports).
 * `bench/evaluate.py` validates the tool against `qnx-ports/aports` (QNX's own ports).
-* `docs/codelab/qnxscout-port-readiness.md` is a QNX 8.0 codelab that ends with an `abuild` build on a QNX target.
+* `docs/codelab/qnxscout-port-readiness.md` is a QNX 8.0 codelab that includes optional `abuild` instructions for a QNX target; these on-target steps were not executed for this release.
 
 ### Build and run instructions
 
@@ -123,10 +123,14 @@ qnxscout is a host-based developer tool whose output is specifically for buildin
 * Toolchain: Python 3.9+ standard library only. For the on-target build in the codelab, the QNX Developer Desktop toolchain and `abuild`.
 
 ```bash
-git clone https://github.com/OWNER/qnxscout && cd qnxscout
+git clone https://github.com/coledemole52/qnxscout && cd qnxscout
 python3 -m pip install .
 qnxscout scan path/to/project              # or a .tar.gz
 qnxscout scan path/to/project -f html -o report.html
 qnxscout scan path/to/project --sdp "$QNX_TARGET"   # optional, with QNX SDP 8.0 installed
 python3 -m unittest discover -s tests             # test suite
 ```
+
+### Verification limits
+
+This release demonstrates the host scanner running on Windows. It does not claim an executed QNX target build or real-SDP verification. Benchmark numbers are preserved historical results, not a newly reproduced 609-package evaluation.

@@ -2,7 +2,7 @@
 
 **Know what breaks before you port to QNX 8.0.**
 
-qnxscout reads a C/C++ source tree (or a release tarball) on any host and tells you what will not build, link or behave correctly on QNX 8.0: where, why, how to fix it, and which QNX document or QNX port patch the advice comes from. No QNX SDP is needed to scan. If you have one installed, qnxscout can verify its findings against it.
+qnxscout reads a C/C++ source tree (or a release tarball) on any host and flags likely build, link and runtime compatibility problems on QNX 8.0: where, why, how to fix it, and which QNX document or QNX port patch the advice comes from. No QNX SDP is needed to scan. If you have one installed, qnxscout can verify its findings against it.
 
 ```
 $ qnxscout scan tmux-3.7c.tar.gz
@@ -30,11 +30,11 @@ qnxscout: QNX 8.0 port-readiness report for tmux-3.7c
 (abridged: each finding also prints why, fix and evidence links)
 ```
 
-That is, item for item, what QNX engineers changed to port tmux in [`qnx-ports/aports/extra/tmux`](https://github.com/qnx-ports/aports/tree/main/extra/tmux). qnxscout predicted it from the pristine upstream tarball.
+These findings correspond to identified compatibility changes in the historical QNX tmux port in [`qnx-ports/aports/extra/tmux`](https://github.com/qnx-ports/aports/tree/main/extra/tmux). The scan uses pristine upstream source; tmux also informed rule development, so this is an illustrative example, not a held-out accuracy test.
 
 ## Why
 
-QNX 8.0 is free for non-commercial use, and QNX is porting the open-source world onto it in the open. [`qnx-ports/aports`](https://github.com/qnx-ports/aports) holds 721 packages and 396 patches. Reading those patches shows that porting friction is not random. The same few dozen differences recur:
+QNX 8.0 is free for non-commercial use, and QNX is porting the open-source world onto it in the open. [`qnx-ports/aports`](https://github.com/qnx-ports/aports) contained 721 packages and 396 patches in the saved benchmark snapshot. Reading those patches shows that porting friction is not random. The same few dozen differences recur:
 
 * `SA_RESTART`, `IOV_MAX` and `d_type` are missing.
 * Sockets live in `libsocket`, POSIX regex in `libregex`, and inotify in `libfsnotify`.
@@ -42,7 +42,7 @@ QNX 8.0 is free for non-commercial use, and QNX is porting the open-source world
 * `epoll`, `eventfd` and `timerfd` come from QNX compatibility libraries.
 * `#if __linux__ / #elif __APPLE__ / #else #error` chains, and CMake files that only know `Linux`, stop the build.
 
-Today you discover them one compile error at a time, on the target. qnxscout tells you all of them up front.
+Today you discover them one compile error at a time, on the target. qnxscout surfaces known patterns before the first build; compilation and target testing remain necessary.
 
 ## What it does
 
@@ -56,6 +56,8 @@ Today you discover them one compile error at a time, on the target. qnxscout tel
 ## Install
 
 ```bash
+git clone https://github.com/coledemole52/qnxscout.git
+cd qnxscout
 python3 -m pip install .          # Python 3.9+, no dependencies
 ```
 
@@ -91,13 +93,13 @@ Severities:
 | | |
 |---|---|
 | QNX ports scanned from pristine upstream source | 609 of 721 |
-| Real fixes QNX engineers made (package, issue) | 211 in 135 packages |
-| **Predicted by qnxscout before building** | **155 (74%)** |
+| Identified rule-mappable historical issues (package, issue) | 211 in 135 packages |
+| **Predicted by qnxscout before building** | **155/211 (73.5%)** |
 | ... counting the right file as a hit | 164 (78%) |
-| Effort score: needed QNX fixes vs. built unchanged (AUC) | 0.777 |
-| Graded **A** (likely builds as-is) and QNX indeed needed no fix | 224 of 232 (97%) |
+| Effort score: identified fixes vs. no identified fixes (AUC) | 0.777 |
+| Graded **A** and had no identified rule-mappable fix | 224 of 232 (97%) |
 
-The ground truth is a conservative lower bound. Some QNX recipe flags are redundant (libuv already links
+This is a retrospective rule-mappable benchmark, not a count of every change engineers made or an independent prospective accuracy estimate. Labels were extracted using the rule vocabulary, and some evaluated ports informed rule development. No identified fix does not establish that a package built unchanged. Grades do not certify portability. The full 609-package run has not been independently rerun for this release. Some QNX recipe flags are redundant (libuv already links
 `socket` in its upstream QNX branch), and a fix QNX made once in a central header counts once. Weak spots are
 documented per rule: large-stack detection (only fixed-size arrays of 256 KiB or more) and C-standard detection
 (only explicit `-std=c89`-style flags) catch a minority of what QNX fixed. Full per-package results and per-rule
@@ -107,7 +109,7 @@ recall are in [`bench/results/`](bench/results/).
 
 [`bench/frontier.py`](bench/frontier.py) asks a forward-looking question: *what could QNX port next, and how hard would each package be?* It takes every Alpine package that is not yet in `qnx-ports/aports`, keeps the ones whose dependencies are all already ported, and scans their pristine sources.
 
-Of **4,969** Alpine packages with C/C++-style builds that QNX has not ported yet, **1,559** have every dependency already on QNX. qnxscout scanned 957 of them with C/C++ code: **527** are predicted to be grade A or B (build as-is, or link flags and a few defines).
+Of **4,969** Alpine packages with C/C++-style builds that QNX has not ported yet, **1,559** pass dependency-name availability checks in the saved dataset; dependency versions, buildability and runtime compatibility are unverified. qnxscout scanned 957 of them with C/C++ code: **527** are predicted to be grade A or B (build as-is, or link flags and a few defines).
 
 The ranked list is in [`docs/FRONTIER.md`](docs/FRONTIER.md).
 
@@ -133,14 +135,14 @@ jobs:
     permissions: { security-events: write, contents: read }
     steps:
       - uses: actions/checkout@v4
-      - uses: OWNER/qnxscout@v0.1.0
+      - uses: coledemole52/qnxscout@v0.1.0
       - uses: github/codeql-action/upload-sarif@v3
         with: { sarif_file: qnxscout.sarif }
 ```
 
 ## Tutorial
 
-[`docs/codelab/qnxscout-port-readiness.md`](docs/codelab/qnxscout-port-readiness.md) is a QNX-codelab-format tutorial. It scans tmux, turns the findings into a QNX patch, and builds it on a QNX 8.0 target with `abuild`.
+[`docs/codelab/qnxscout-port-readiness.md`](docs/codelab/qnxscout-port-readiness.md) is a QNX-codelab-format tutorial. It scans tmux, turns the findings into a QNX patch, and provides optional QNX 8.0 target build instructions using `abuild`.
 
 ## Limitations
 
@@ -152,3 +154,10 @@ jobs:
 ## License
 
 Apache-2.0. QNX is a trademark of BlackBerry Limited. qnxscout is an independent project and is not affiliated with or endorsed by BlackBerry/QNX. The function index in `qnxscout/data` lists only names, header names and library names from the public QNX 8.0 C Library Reference.
+
+## Release verification
+
+The host tool targets QNX SDP 8.0; it runs on Python 3.9+ on Windows, macOS or Linux. No QNX target or compiler is needed for static scanning. Actual QNX execution and the optional SDP checks against a real installation have not been verified in this release. The tutorial includes optional on-target instructions, not a claim that those builds were executed.
+
+Run `python -m unittest discover -s tests -v`. Windows verification: 30 passed, one Linux host-libc test skipped in the original 31-test suite. See [release evidence](docs/RELEASE_VERIFICATION.md) for current checks and a fresh upstream scan.
+

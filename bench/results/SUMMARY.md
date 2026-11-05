@@ -18,6 +18,10 @@ Notes: QNX052 "(null)" heuristic demoted to info after the main run (0 hits); sc
 
 Ground truth is a conservative lower bound: some QNX recipe flags are redundant (libuv already links `socket` in its upstream QNX branch), and a fix QNX made centrally (one compat header) counts once.
 
+## Interpretation limits
+
+The 73.5% (155/211) same-rule recall is for identified rule-mappable historical issues, not every engineer modification. Label extraction uses the same rule vocabulary, and evaluated ports informed rule development. This is retrospective, not held-out or prospective validation; no identified fix and a grade A do not certify a successful QNX build. This release retains the historical data without rerunning all upstream downloads.
+
 ## Per-rule recall
 
 | Rule | Issue | QNX fixed | Predicted | Recall | Packages flagged |

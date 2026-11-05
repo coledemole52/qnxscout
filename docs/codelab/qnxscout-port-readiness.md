@@ -4,9 +4,9 @@ summary: Scan a Linux C/C++ project on your laptop, see exactly what will break 
 categories: qnx, porting, alpine, tools
 tags: beginner
 difficulty: 2
-status: draft
+status: published
 authors: qnxscout contributors
-feedback_link: https://github.com/qnx/codelabs/issues
+feedback_link: https://github.com/coledemole52/qnxscout/issues
 
 # Predict QNX 8.0 Porting Work Before You Build, with qnxscout
 
@@ -16,7 +16,7 @@ Porting a Linux program to QNX 8.0 usually goes like this: copy the build recipe
 
 **qnxscout** is a free, open-source host tool that reads a source tree and tells you up front what will break on QNX 8.0, where, why, and how QNX's own engineers fixed the same problem in other packages. It runs on Linux, macOS or Windows with plain Python. No QNX SDP is needed to scan, and it can optionally verify its findings against your SDP.
 
-In this codelab you will reproduce QNX's real port of **tmux** (it lives in `qnx-ports/aports` as `extra/tmux`), but you will know every change you need before you compile a single file.
+In this codelab you will reproduce QNX's real port of **tmux** (it lives in `qnx-ports/aports` as `extra/tmux`), using the scan to identify known compatibility patterns before compiling. Additional build and runtime issues may remain. The host scan is verified; the optional QNX target build below has not been executed for this release.
 
 **What you will learn:**
 
@@ -40,7 +40,7 @@ qnxscout does not grep for scary function names. It:
 
 1. **Lexes** every C/C++ file so comments, string literals and `#if 0` blocks never produce findings.
 2. **Evaluates the preprocessor for a QNX 8.0 target.** It knows what the QNX compilers predefine (`__QNX__`, `__unix__`, 64-bit, little-endian) and what they do not (`__linux__`, `__GLIBC__`, ...), and which configure results such as `HAVE_EPOLL` or `HAVE_PIPE2` will come out on QNX. Every line is classified as *compiled on QNX*, *not compiled*, or *depends on build configuration*.
-3. **Applies 68 rules**, each backed by public evidence: the QNX 8.0 C Library Reference, the QNX Porting Guide, QNX's own agent skills, or a patch QNX engineers wrote in `qnx-ports/aports`.
+3. **Applies 69 rules**, each backed by public evidence: the QNX 8.0 C Library Reference, the QNX Porting Guide, QNX's own agent skills, or a patch QNX engineers wrote in `qnx-ports/aports`.
 4. **Evaluates CMake and Meson conditions** the way they will run on QNX (`CMAKE_SYSTEM_NAME` is `QNX`, Meson's system is `qnx`) to find Linux-only branches, `FATAL_ERROR`s that QNX reaches, and libraries QNX does not have (`pthread`, `dl`, `util`).
 5. **Scores** the result from A (likely builds as-is) to E (major porting effort).
 
@@ -51,13 +51,13 @@ qnxscout does not grep for scary function names. It:
 On your host:
 
 ```bash
-git clone https://github.com/OWNER/qnxscout.git
+git clone https://github.com/coledemole52/qnxscout.git
 cd qnxscout
 python3 -m pip install .
 qnxscout --version
 ```
 
-Replace `OWNER` with the account that hosts qnxscout. qnxscout has no dependencies outside the Python standard library.
+qnxscout has no dependencies outside the Python standard library.
 
 ---
 
@@ -252,7 +252,7 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
-      - uses: OWNER/qnxscout@v0.1.0
+      - uses: coledemole52/qnxscout@v0.1.0
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: qnxscout.sarif
